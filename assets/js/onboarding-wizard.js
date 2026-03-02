@@ -325,6 +325,105 @@
     }
 
     /* =========================================================================
+     * CONFETTI
+     *
+     * Lightweight canvas-based confetti burst. Triggered when the
+     * localized config has confetti: true (set on complete steps).
+     * ========================================================================= */
+
+    if (window.onboardingWizard && window.onboardingWizard.confetti) {
+        (function () {
+            const canvas = document.createElement('canvas');
+            canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999999';
+            document.body.appendChild(canvas);
+
+            const ctx = canvas.getContext('2d');
+            let width = canvas.width = window.innerWidth;
+            let height = canvas.height = window.innerHeight;
+
+            window.addEventListener('resize', () => {
+                width = canvas.width = window.innerWidth;
+                height = canvas.height = window.innerHeight;
+            });
+
+            const colors = [
+                '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b',
+                '#10b981', '#3b82f6', '#ef4444', '#14b8a6'
+            ];
+
+            const particles = [];
+            const count = 120;
+
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: width * 0.5 + (Math.random() - 0.5) * width * 0.4,
+                    y: height * 0.4,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: -(Math.random() * 10 + 4),
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: Math.random() * 6 + 3,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: (Math.random() - 0.5) * 12,
+                    opacity: 1,
+                    gravity: 0.15 + Math.random() * 0.1,
+                    drag: 0.98 + Math.random() * 0.015,
+                    shape: Math.random() > 0.5 ? 'rect' : 'circle'
+                });
+            }
+
+            let frame = 0;
+            const maxFrames = 180;
+
+            function animate() {
+                frame++;
+
+                if (frame > maxFrames) {
+                    canvas.remove();
+                    return;
+                }
+
+                ctx.clearRect(0, 0, width, height);
+
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+
+                    p.vx *= p.drag;
+                    p.vy += p.gravity;
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.rotation += p.rotationSpeed;
+
+                    // Fade out in the last third
+                    if (frame > maxFrames * 0.66) {
+                        p.opacity = Math.max(0, 1 - (frame - maxFrames * 0.66) / (maxFrames * 0.34));
+                    }
+
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate((p.rotation * Math.PI) / 180);
+                    ctx.globalAlpha = p.opacity;
+                    ctx.fillStyle = p.color;
+
+                    if (p.shape === 'rect') {
+                        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    ctx.restore();
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            // Small delay so the page has a moment to render
+            setTimeout(() => requestAnimationFrame(animate), 300);
+        })();
+    }
+
+    /* =========================================================================
      * KEYBOARD SHORTCUTS
      * ========================================================================= */
 

@@ -108,35 +108,35 @@ class Manager {
 
         $defaults = [
             // Menu registration
-            'page_title'       => '',
-            'menu_title'       => '',
-            'menu_slug'        => '',
-            'parent_slug'      => '',
-            'capability'       => 'manage_options',
+                'page_title'  => '',
+                'menu_title'  => '',
+                'menu_slug'   => '',
+                'parent_slug' => '',
+                'capability'  => 'manage_options',
 
             // Header
-            'logo'             => '',
-            'header_title'     => '',
+                'logo'         => '',
+                'header_title' => '',
 
             // Behavior
-            'redirect'         => false,
-            'completed_option' => '',
+                'redirect'         => false,
+                'completed_option' => '',
 
             // Custom value callbacks (flat — replaces default get_option/update_option)
-            'get_callback'     => null,
-            'update_callback'  => null,
+                'get_callback'    => null,
+                'update_callback' => null,
 
             // Steps
-            'steps'            => [],
+                'steps' => [],
 
             // Display
-            'body_class'       => '',
+                'body_class' => '',
 
             // Colors
-            'colors'           => [],
+                'colors' => [],
 
             // Labels
-            'labels'           => [],
+                'labels' => [],
         ];
 
         $config = wp_parse_args( $config, $defaults );
@@ -331,8 +331,20 @@ class Manager {
         // Build depends map for current step fields
         $depends_map = self::build_depends_map( $id, $config );
 
+        // Check if current step has confetti enabled
+        $visible_keys = self::get_visible_step_keys( $config );
+        $current_key  = sanitize_key( $_GET['step'] ?? '' );
+
+        if ( empty( $current_key ) || ! in_array( $current_key, $visible_keys, true ) ) {
+            $current_key = $visible_keys[0] ?? '';
+        }
+
+        $current_step = $config['steps'][ $current_key ] ?? [];
+        $confetti     = ! empty( $current_step['confetti'] );
+
         wp_localize_script( 'onboarding-wizard-scripts', 'onboardingWizard', [
-                'depends' => $depends_map,
+                'depends'  => $depends_map,
+                'confetti' => $confetti,
         ] );
     }
 
@@ -379,7 +391,7 @@ class Manager {
 
             $deps = $field['depends'];
 
-            // Normalize: single depends on object (has 'field' key) vs array of objects
+            // Normalize: single depends object (has 'field' key) vs array of objects
             if ( isset( $deps['field'] ) ) {
                 $deps = [ $deps ];
             }
@@ -1702,6 +1714,7 @@ class Manager {
                 'show_if'     => null,
                 'skippable'   => false,
                 'skip_label'  => '',
+                'confetti'    => false,
                 'fields'      => [],
                 'items'       => [],
                 'features'    => [],
