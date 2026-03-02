@@ -55,15 +55,24 @@
      * Reads the dependency map from onboardingWizard.depends (localized
      * from PHP) and watches source fields for changes.
      *
-     * Each entry in the map looks like:
+     * Each field key maps to an ARRAY of dependency rule objects. This
+     * allows a single field to depend on multiple source fields for
+     * different purposes (e.g., visibility from one field, attribute
+     * swapping from another).
+     *
+     * Each rule object looks like:
      * {
-     *   field:    'test_mode',       // Source field key
-     *   operator: '==',              // ==, !=, in, not_in
-     *   value:    '1',               // Value to compare (or array for in/not_in)
-     *   action:   'show',            // 'show' = show when true, 'swap' = swap attrs
-     *   attrs:    { placeholder: 'pk_test_...', help: '...' },   // When condition met
-     *   attrs_alt: { placeholder: 'pk_live_...', help: '...' }   // When condition not met
+     *   field:     'test_mode',       // Source field key to watch
+     *   operator:  '==',              // ==, !=, in, not_in
+     *   value:     '1',               // Value to compare (or array for in/not_in)
+     *   action:    'show',            // 'show' = toggle visibility, 'swap' = swap attrs only
+     *   attrs:     { ... },           // Attributes to apply when condition is met
+     *   attrs_alt: { ... }            // Attributes to apply when condition is NOT met
      * }
+     *
+     * Visibility logic: if ANY rule with action='show' evaluates to false,
+     * the field is hidden. Attribute swapping is applied independently per
+     * rule regardless of visibility.
      * ========================================================================= */
 
     const dependsMap = (typeof onboardingWizard !== 'undefined' && onboardingWizard.depends)
@@ -71,7 +80,13 @@
         : {};
 
     /**
-     * Get the current value of a source field
+     * Get the current value of a source field.
+     *
+     * Checks checkbox/toggle, radio, select, and text inputs
+     * in that order, returning the first match found.
+     *
+     * @param {string} fieldKey The name attribute of the source field.
+     * @returns {string} The current field value.
      */
     const getFieldValue = (fieldKey) => {
         // Toggle/checkbox
@@ -96,7 +111,13 @@
     };
 
     /**
-     * Evaluate a dependency condition
+     * Evaluate a single dependency condition.
+     *
+     * Compares the current value of the source field against the
+     * target value using the specified operator.
+     *
+     * @param {Object} dep The dependency rule object.
+     * @returns {boolean} Whether the condition is met.
      */
     const evaluateCondition = (dep) => {
         const currentValue = getFieldValue(dep.field);
@@ -117,7 +138,13 @@
     };
 
     /**
-     * Apply attribute overrides to a dependent field's elements
+     * Apply attribute overrides to a dependent field's elements.
+     *
+     * Updates placeholder, help text, and/or label on the field
+     * wrapper identified by the data-depends attribute.
+     *
+     * @param {string} fieldKey The dependent field key.
+     * @param {Object} attrs    Object with optional placeholder, help, label keys.
      */
     const applyAttrs = (fieldKey, attrs) => {
         if (!attrs) {
@@ -155,67 +182,83 @@
     };
 
     /**
-     * Process all dependencies once
+     * Process all field dependencies.
+     *
+     * Iterates every field in the depends map, evaluates all of its
+     * dependency rules, and applies visibility and attribute changes.
+     *
+     * Visibility: any 'show' rule that fails hides the field.
+     * Attributes: each rule with attrs/attrs_alt is applied independently.
      */
     const processDependencies = () => {
         Object.keys(dependsMap).forEach(fieldKey => {
-            const dep = dependsMap[fieldKey];
-            const conditionMet = evaluateCondition(dep);
-            const action = dep.action || 'show';
-
+            const rules = dependsMap[fieldKey];
             const wrapper = form.querySelector(`[data-depends="${fieldKey}"]`);
 
-            if (action === 'show') {
-                // Show/hide the field
-                if (wrapper) {
-                    if (conditionMet) {
-                        wrapper.classList.remove('onboarding-field--hidden');
-                    } else {
-                        wrapper.classList.add('onboarding-field--hidden');
+            let isVisible = true;
+
+            rules.forEach(dep => {
+                const conditionMet = evaluateCondition(dep);
+                const action = dep.action || 'show';
+
+                // Visibility: any 'show' rule that fails hides the field
+                if (action === 'show' && !conditionMet) {
+                    isVisible = false;
+                }
+
+                // Attribute swapping (works for both 'show' and 'swap' actions)
+                if (dep.attrs || dep.attrs_alt) {
+                    if (conditionMet && dep.attrs) {
+                        applyAttrs(fieldKey, dep.attrs);
+                    } else if (!conditionMet && dep.attrs_alt) {
+                        applyAttrs(fieldKey, dep.attrs_alt);
+                    } else if (!conditionMet && !dep.attrs_alt) {
+                        // Reset to defaults from data attributes
+                        if (wrapper) {
+                            const input = wrapper.querySelector('.onboarding-input, .onboarding-textarea');
+                            if (input) {
+                                const defaultPh = input.getAttribute('data-default-placeholder');
+                                if (defaultPh !== null) {
+                                    input.setAttribute('placeholder', defaultPh);
+                                }
+                            }
+
+                            const helpEl = wrapper.querySelector('.onboarding-field__help');
+                            if (helpEl) {
+                                const defaultHelp = helpEl.getAttribute('data-default-help');
+                                if (defaultHelp !== null) {
+                                    helpEl.textContent = defaultHelp;
+                                }
+                            }
+                        }
                     }
                 }
-            }
+            });
 
-            // Attribute swapping (works for both 'show' and 'swap' actions)
-            if (dep.attrs || dep.attrs_alt) {
-                if (conditionMet && dep.attrs) {
-                    applyAttrs(fieldKey, dep.attrs);
-                } else if (!conditionMet && dep.attrs_alt) {
-                    applyAttrs(fieldKey, dep.attrs_alt);
-                } else if (!conditionMet && !dep.attrs_alt) {
-                    // Reset to defaults from data attributes
-                    if (wrapper) {
-                        const input = wrapper.querySelector('.onboarding-input, .onboarding-textarea');
-                        if (input) {
-                            const defaultPh = input.getAttribute('data-default-placeholder');
-                            if (defaultPh !== null) {
-                                input.setAttribute('placeholder', defaultPh);
-                            }
-                        }
-
-                        const helpEl = wrapper.querySelector('.onboarding-field__help');
-                        if (helpEl) {
-                            const defaultHelp = helpEl.getAttribute('data-default-help');
-                            if (defaultHelp !== null) {
-                                helpEl.textContent = defaultHelp;
-                            }
-                        }
-                    }
+            // Apply visibility after evaluating all rules
+            if (wrapper) {
+                if (isVisible) {
+                    wrapper.classList.remove('onboarding-field--hidden');
+                } else {
+                    wrapper.classList.add('onboarding-field--hidden');
                 }
             }
         });
     };
 
     /**
-     * Collect all source field keys and bind change listeners
+     * Collect all source field keys from the dependency map and
+     * bind change listeners so dependencies re-evaluate on input.
      */
     if (Object.keys(dependsMap).length > 0) {
         const sourceFields = new Set();
 
-        Object.values(dependsMap).forEach(dep => {
-            if (dep.field) {
-                sourceFields.add(dep.field);
-            }
+        Object.values(dependsMap).forEach(rules => {
+            rules.forEach(dep => {
+                if (dep.field) {
+                    sourceFields.add(dep.field);
+                }
+            });
         });
 
         sourceFields.forEach(fieldKey => {
