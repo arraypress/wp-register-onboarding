@@ -29,14 +29,12 @@ if ( ! function_exists( 'register_onboarding' ) ) {
 	 * @param array  $config Wizard configuration array. See Manager class for options.
 	 *
 	 * @return void
-	 *
 	 * @since 1.0.0
 	 *
 	 * @example
 	 * register_onboarding( 'my-plugin-setup', [
 	 *     'page_title'  => 'Setup Wizard',
 	 *     'menu_slug'   => 'my-plugin-setup',
-	 *     'parent_slug' => 'my-plugin',
 	 *     'logo'        => plugin_dir_url( __FILE__ ) . 'logo.png',
 	 *     'steps'       => [
 	 *         'welcome' => [
@@ -58,5 +56,27 @@ if ( ! function_exists( 'register_onboarding' ) ) {
 	 */
 	function register_onboarding( string $id, array $config ): void {
 		Manager::register( $id, $config );
+	}
+}
+
+if ( ! function_exists( 'register_onboarding_redirect' ) ) {
+	/**
+	 * Set the activation redirect for an onboarding wizard
+	 *
+	 * Call this from your plugin's register_activation_hook callback
+	 * to redirect the user to the wizard on first activation.
+	 *
+	 * @param string $id Wizard identifier matching the one used in register_onboarding().
+	 *
+	 * @return void
+	 * @since 1.0.0
+	 *
+	 * @example
+	 * register_activation_hook( __FILE__, function() {
+	 *     register_onboarding_redirect( 'my-plugin-setup' );
+	 * } );
+	 */
+	function register_onboarding_redirect( string $id ): void {
+		Manager::set_redirect( $id );
 	}
 }

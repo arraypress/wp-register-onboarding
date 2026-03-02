@@ -5,10 +5,11 @@
  * Central manager class for registering and rendering WordPress admin
  * onboarding wizards. Provides a configuration-driven approach to creating
  * multi-step setup flows with support for:
+ *
  * - Automatic menu page registration (hidden from nav)
  * - Step-based navigation with progress indicator
  * - Built-in step types: welcome, fields, checklist, complete, callback
- * - Field rendering with automatic saving via wp_options or custom storage
+ * - Field rendering with automatic saving via wp_options or custom callbacks
  * - Per-field and per-step validation with error display
  * - Select2 for searchable selects (countries, currencies, etc.)
  * - Option presets via arraypress/wp-currencies and arraypress/wp-countries
@@ -82,7 +83,7 @@ class Manager {
     private static array $errors = [];
 
     /**
-     * Current wizard ID (set during submission for storage access)
+     * Current wizard ID (set during rendering/submission)
      *
      * @since 1.0.0
      * @var string
@@ -107,34 +108,35 @@ class Manager {
 
         $defaults = [
             // Menu registration
-                'page_title'       => '',
-                'menu_title'       => '',
-                'menu_slug'        => '',
-                'parent_slug'      => '',
-                'capability'       => 'manage_options',
+            'page_title'       => '',
+            'menu_title'       => '',
+            'menu_slug'        => '',
+            'parent_slug'      => '',
+            'capability'       => 'manage_options',
 
             // Header
-                'logo'             => '',
-                'header_title'     => '',
+            'logo'             => '',
+            'header_title'     => '',
 
             // Behavior
-                'redirect'         => false,
-                'completed_option' => '',
+            'redirect'         => false,
+            'completed_option' => '',
 
-            // Storage callbacks (optional — defaults to get_option/update_option)
-                'storage'          => [],
+            // Custom value callbacks (flat — replaces default get_option/update_option)
+            'get_callback'     => null,
+            'update_callback'  => null,
 
             // Steps
-                'steps'            => [],
+            'steps'            => [],
 
             // Display
-                'body_class'       => '',
+            'body_class'       => '',
 
             // Colors
-                'colors'           => [],
+            'colors'           => [],
 
             // Labels
-                'labels'           => [],
+            'labels'           => [],
         ];
 
         $config = wp_parse_args( $config, $defaults );
@@ -143,12 +145,6 @@ class Manager {
         if ( empty( $config['menu_slug'] ) ) {
             $config['menu_slug'] = sanitize_key( $id );
         }
-
-        // Parse storage callbacks
-        $config['storage'] = wp_parse_args( $config['storage'], [
-                'get'    => null,
-                'update' => null,
-        ] );
 
         // Parse labels
         $config['labels'] = wp_parse_args( $config['labels'], [
@@ -170,9 +166,9 @@ class Manager {
             $config['header_title'] = $config['page_title'];
         }
 
-        // Auto-generate completed option key
+        // Auto-generate completed option key (normalize hyphens to underscores)
         if ( empty( $config['completed_option'] ) ) {
-            $config['completed_option'] = sanitize_key( $id ) . '_completed';
+            $config['completed_option'] = str_replace( '-', '_', sanitize_key( $id ) ) . '_completed';
         }
 
         // Normalize steps
@@ -186,7 +182,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Initialize the manager
+     * Initialize the manager (runs once)
      *
      * @return void
      * @since 1.0.0
@@ -223,8 +219,8 @@ class Manager {
     /**
      * Register a single admin menu page
      *
-     * Wizards are registered as hidden submenu pages under the parent slug
-     * so they don't clutter the admin menu.
+     * When parent_slug is empty, the wizard is registered as a hidden
+     * page that doesn't appear in the admin sidebar.
      *
      * @param string $id     Wizard identifier.
      * @param array  $config Wizard configuration.
@@ -263,7 +259,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Enqueue assets
+     * Enqueue assets for the current wizard page
      *
      * @param string $hook Current admin page hook.
      *
@@ -286,7 +282,7 @@ class Manager {
     }
 
     /**
-     * Actually enqueue the assets
+     * Enqueue CSS, JS, Select2, and localize dependency data
      *
      * @param string $id     Wizard identifier.
      * @param array  $config Wizard configuration.
@@ -383,7 +379,7 @@ class Manager {
 
             $deps = $field['depends'];
 
-            // Normalize: single depends object (has 'field' key) vs array of objects
+            // Normalize: single depends on object (has 'field' key) vs array of objects
             if ( isset( $deps['field'] ) ) {
                 $deps = [ $deps ];
             }
@@ -398,12 +394,10 @@ class Manager {
                         'action'   => $dep['action'] ?? 'show',
                 ];
 
-                // Attribute overrides when condition is met
                 if ( ! empty( $dep['attrs'] ) ) {
                     $entry['attrs'] = $dep['attrs'];
                 }
 
-                // Attribute values when condition is NOT met (the alternate state)
                 if ( ! empty( $dep['attrs_alt'] ) ) {
                     $entry['attrs_alt'] = $dep['attrs_alt'];
                 }
@@ -424,6 +418,9 @@ class Manager {
     /**
      * Handle activation redirect
      *
+     * Checks for a redirect transient set during plugin activation.
+     * Redirects to the wizard page if the wizard hasn't been completed.
+     *
      * @return void
      * @since 1.0.0
      */
@@ -433,7 +430,7 @@ class Manager {
                 continue;
             }
 
-            $transient_key = sanitize_key( $id ) . '_redirect';
+            $transient_key = str_replace( '-', '_', sanitize_key( $id ) ) . '_redirect';
 
             if ( ! get_transient( $transient_key ) ) {
                 continue;
@@ -457,7 +454,9 @@ class Manager {
     /**
      * Set the redirect transient
      *
-     * Call this from your plugin's activation hook to trigger the redirect.
+     * Call this from your plugin's activation hook to trigger the
+     * redirect on first admin page load. Use the register_onboarding_redirect()
+     * helper function for a cleaner API.
      *
      * @param string $id Wizard identifier.
      *
@@ -465,15 +464,18 @@ class Manager {
      * @since 1.0.0
      */
     public static function set_redirect( string $id ): void {
-        set_transient( sanitize_key( $id ) . '_redirect', 1, 30 );
+        set_transient( str_replace( '-', '_', sanitize_key( $id ) ) . '_redirect', 1, 30 );
     }
 
     /* =========================================================================
-     * STORAGE
+     * VALUE CALLBACKS
      * ========================================================================= */
 
     /**
-     * Get a stored value using the wizard's storage callbacks or wp_options
+     * Get a stored value using custom callback or wp_options fallback
+     *
+     * When get_callback is provided, the field's 'option' key becomes
+     * a key within that system rather than a standalone wp_options key.
      *
      * @param array  $config  Wizard configuration.
      * @param string $key     Option/field key.
@@ -482,16 +484,19 @@ class Manager {
      * @return mixed
      * @since 1.0.0
      */
-    private static function storage_get( array $config, string $key, $default = '' ) {
-        if ( ! empty( $config['storage']['get'] ) && is_callable( $config['storage']['get'] ) ) {
-            return call_user_func( $config['storage']['get'], $key, $default );
+    private static function get_value( array $config, string $key, $default = '' ) {
+        if ( ! empty( $config['get_callback'] ) && is_callable( $config['get_callback'] ) ) {
+            return call_user_func( $config['get_callback'], $key, $default );
         }
 
         return get_option( $key, $default );
     }
 
     /**
-     * Update a stored value using the wizard's storage callbacks or wp_options
+     * Update a stored value using custom callback or wp_options fallback
+     *
+     * When update_callback is provided, the field's 'option' key becomes
+     * a key within that system rather than a standalone wp_options key.
      *
      * @param array  $config Wizard configuration.
      * @param string $key    Option/field key.
@@ -500,9 +505,9 @@ class Manager {
      * @return void
      * @since 1.0.0
      */
-    private static function storage_update( array $config, string $key, $value ): void {
-        if ( ! empty( $config['storage']['update'] ) && is_callable( $config['storage']['update'] ) ) {
-            call_user_func( $config['storage']['update'], $key, $value );
+    private static function update_value( array $config, string $key, $value ): void {
+        if ( ! empty( $config['update_callback'] ) && is_callable( $config['update_callback'] ) ) {
+            call_user_func( $config['update_callback'], $key, $value );
 
             return;
         }
@@ -516,6 +521,9 @@ class Manager {
 
     /**
      * Process step form submissions
+     *
+     * Handles validation, saving, and navigation for the current step.
+     * Guards against submissions for steps that aren't currently visible.
      *
      * @return void
      * @since 1.0.0
@@ -543,6 +551,13 @@ class Manager {
 
         if ( ! current_user_can( $config['capability'] ) ) {
             wp_die( __( 'You do not have permission to access this page.', 'arraypress' ) );
+        }
+
+        // Guard: only process steps that are currently visible
+        $visible_keys = self::get_visible_step_keys( $config );
+        if ( ! in_array( $step_key, $visible_keys, true ) ) {
+            wp_safe_redirect( self::get_step_url( $config, $visible_keys[0] ?? '' ) );
+            exit;
         }
 
         $step = $config['steps'][ $step_key ] ?? null;
@@ -581,9 +596,8 @@ class Manager {
         // Save
         self::save_step( $config, $step, $_POST );
 
-        // Mark as completed if this is the last step
-        $visible_keys = self::get_visible_step_keys( $config );
-        $last_key     = end( $visible_keys );
+        // Mark as completed if this is the last visible step
+        $last_key = end( $visible_keys );
 
         if ( $step_key === $last_key ) {
             update_option( $config['completed_option'], time() );
@@ -623,6 +637,8 @@ class Manager {
 
     /**
      * Validate a step's submitted data
+     *
+     * Runs step-level validation callback first, then per-field validators.
      *
      * @param array $step Step configuration.
      * @param array $data Submitted POST data.
@@ -680,6 +696,9 @@ class Manager {
     /**
      * Save a step's data
      *
+     * Uses the step's custom save callback if provided, otherwise
+     * auto-saves fields and checklist items via the value callbacks.
+     *
      * @param array $config Wizard configuration.
      * @param array $step   Step configuration.
      * @param array $data   Submitted POST data.
@@ -705,7 +724,7 @@ class Manager {
                 $value = $data[ $key ] ?? $field['default'] ?? '';
                 $value = self::sanitize_field_value( $field, $value );
 
-                self::storage_update( $config, $field['option'], $value );
+                self::update_value( $config, $field['option'], $value );
             }
         }
 
@@ -718,7 +737,7 @@ class Manager {
 
                 $value = isset( $data['checklist'][ $index ] );
 
-                self::storage_update( $config, $item['option'], $value );
+                self::update_value( $config, $item['option'], $value );
             }
         }
     }
@@ -773,7 +792,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Add body classes
+     * Add body classes for wizard pages
      *
      * @param string $classes Space-separated body classes.
      *
@@ -885,7 +904,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Render the wizard header
+     * Render the wizard header (logo or title)
      *
      * @param array $config Wizard configuration.
      *
@@ -958,7 +977,7 @@ class Manager {
     }
 
     /**
-     * Render the step header
+     * Render the step header (title + description)
      *
      * @param array $step Current step configuration.
      *
@@ -1037,7 +1056,7 @@ class Manager {
     }
 
     /**
-     * Render navigation buttons
+     * Render navigation buttons (back, skip, next/finish)
      *
      * @param array $config   Wizard configuration.
      * @param array $step     Current step configuration.
@@ -1087,7 +1106,7 @@ class Manager {
     }
 
     /**
-     * Render the exit link
+     * Render the exit link below the wizard card
      *
      * @param array $config Wizard configuration.
      *
@@ -1191,11 +1210,11 @@ class Manager {
         $default   = $field['default'] ?? '';
         $has_error = isset( self::$errors[ $key ] );
 
-        // Get current value: POST > storage > default
+        // Get current value: POST > stored > default
         $value = $_POST[ $key ] ?? '';
 
         if ( empty( $value ) && ! empty( $option ) ) {
-            $value = self::storage_get( $config, $option, $default );
+            $value = self::get_value( $config, $option, $default );
         }
 
         if ( empty( $value ) ) {
@@ -1275,7 +1294,7 @@ class Manager {
      * @param string $key   Field key.
      * @param array  $field Field configuration.
      * @param string $value Current value.
-     * @param string $type  Input type.
+     * @param string $type  Input type (text, email, url, number).
      *
      * @return void
      * @since 1.0.0
@@ -1295,7 +1314,7 @@ class Manager {
     }
 
     /**
-     * Render a select field
+     * Render a select field (with optional Select2)
      *
      * @param string $key   Field key.
      * @param array  $field Field configuration.
@@ -1443,7 +1462,7 @@ class Manager {
                 if ( isset( $_POST['checklist'][ $index ] ) ) {
                     $checked = true;
                 } elseif ( ! empty( $option ) ) {
-                    $stored = self::storage_get( $config, $option, null );
+                    $stored = self::get_value( $config, $option, null );
                     if ( $stored !== null ) {
                         $checked = filter_var( $stored, FILTER_VALIDATE_BOOLEAN );
                     } else {
@@ -1526,7 +1545,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Get visible step keys
+     * Get visible step keys (respects show_if callbacks)
      *
      * @param array $config Wizard configuration.
      *
@@ -1550,7 +1569,7 @@ class Manager {
     }
 
     /**
-     * Get the adjacent step key
+     * Get the next or previous step key
      *
      * @param array  $config    Wizard configuration.
      * @param string $step_key  Current step key.
@@ -1601,9 +1620,8 @@ class Manager {
     /**
      * Resolve options — handles presets and raw arrays
      *
-     * Uses arraypress/wp-currencies and arraypress/wp-countries for
-     * the 'currencies' and 'countries' presets. Custom presets can be
-     * registered via the arraypress_onboarding_preset_{name} filter.
+     * Supports string presets ('currencies', 'countries', 'timezones')
+     * and custom presets via the arraypress_onboarding_preset_{name} filter.
      *
      * @param string|array $options Options definition.
      *
@@ -1669,7 +1687,7 @@ class Manager {
      * ========================================================================= */
 
     /**
-     * Normalize step definitions
+     * Normalize step definitions with defaults
      *
      * @param array $steps Raw step definitions.
      *
