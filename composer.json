@@ -13,7 +13,9 @@
   ],
   "require": {
     "php": ">=7.4",
-    "arraypress/wp-composer-assets": "dev-main"
+    "arraypress/wp-composer-assets": "dev-main",
+    "arraypress/wp-currencies": "dev-main",
+    "arraypress/wp-countries": "dev-main"
   },
   "autoload": {
     "psr-4": {

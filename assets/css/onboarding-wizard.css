@@ -9,36 +9,25 @@
    ========================================================================== */
 
 :root {
-    /* Text */
     --ob-text-primary: #1d2327;
     --ob-text-secondary: #646970;
     --ob-text-muted: #a7aaad;
-
-    /* Borders */
     --ob-border: #c3c4c7;
     --ob-border-light: #e0e0e0;
-
-    /* Backgrounds */
     --ob-bg-white: #fff;
     --ob-bg-subtle: #f6f7f7;
     --ob-bg-page: #f0f0f1;
-
-    /* Accent */
     --ob-accent: #2271b1;
     --ob-accent-hover: #135e96;
     --ob-accent-light: #e5f0fa;
-
-    /* Status */
     --ob-success: #00a32a;
     --ob-error: #d63638;
-
-    /* Radius */
     --ob-radius: 6px;
     --ob-radius-lg: 12px;
 }
 
 /* ==========================================================================
-   Page Wrap — full-width centered layout
+   Page Wrap
    ========================================================================== */
 
 .onboarding-wizard #wpcontent {
@@ -94,7 +83,7 @@
 
 .onboarding-progress__steps {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     gap: 0;
 }
@@ -151,11 +140,11 @@
 .onboarding-progress__label {
     font-size: 12px;
     color: var(--ob-text-muted);
-    white-space: nowrap;
-    max-width: 90px;
-    overflow: hidden;
-    text-overflow: ellipsis;
     text-align: center;
+    padding: 0 4px;
+    line-height: 1.3;
+    word-break: break-word;
+    max-width: 110px;
 }
 
 .onboarding-progress__step--current .onboarding-progress__label {
@@ -171,10 +160,10 @@
 .onboarding-progress__connector {
     flex: 1;
     height: 2px;
-    min-width: 32px;
+    min-width: 24px;
     max-width: 80px;
-    margin: 0 8px;
-    margin-bottom: 28px;
+    margin: 0 4px;
+    margin-top: 15px;
     background: var(--ob-border-light);
     transition: background 0.2s ease;
 }
@@ -313,6 +302,14 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
+}
+
+.onboarding-field {
+    transition: opacity 0.2s ease, max-height 0.3s ease;
+}
+
+.onboarding-field--hidden {
+    display: none;
 }
 
 .onboarding-field__label {
@@ -468,6 +465,72 @@
 .onboarding-toggle__text {
     font-size: 13px;
     color: var(--ob-text-secondary);
+}
+
+/* ==========================================================================
+   Select2 Overrides
+   ========================================================================== */
+
+.onboarding-field .select2-container {
+    width: 100% !important;
+}
+
+.onboarding-field .select2-container--default .select2-selection--single {
+    height: 42px;
+    padding: 6px 14px;
+    border: 1px solid var(--ob-border);
+    border-radius: var(--ob-radius);
+    background: var(--ob-bg-white);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.onboarding-field .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 28px;
+    padding-left: 0;
+    color: var(--ob-text-primary);
+    font-size: 14px;
+}
+
+.onboarding-field .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 40px;
+    right: 8px;
+}
+
+.onboarding-field .select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--ob-text-muted);
+}
+
+.onboarding-field .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: var(--ob-accent);
+    box-shadow: 0 0 0 2px var(--ob-accent-light);
+}
+
+.select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
+    background-color: var(--ob-accent);
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    padding: 8px 12px;
+    border: 1px solid var(--ob-border);
+    border-radius: var(--ob-radius);
+    font-size: 14px;
+    outline: none;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field:focus {
+    border-color: var(--ob-accent);
+}
+
+.select2-dropdown {
+    border: 1px solid var(--ob-border);
+    border-radius: var(--ob-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.select2-results__option {
+    padding: 8px 12px;
+    font-size: 14px;
 }
 
 /* ==========================================================================
@@ -695,6 +758,88 @@
 }
 
 /* ==========================================================================
+   Select2 Theme Overrides
+   ========================================================================== */
+
+.onboarding-field__input .select2-container {
+    width: 100% !important;
+}
+
+.onboarding-field__input .select2-container--default .select2-selection--single {
+    height: 42px;
+    padding: 6px 14px;
+    border: 1px solid var(--ob-border);
+    border-radius: var(--ob-radius);
+    background: var(--ob-bg-white);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.onboarding-field__input .select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 28px;
+    padding: 0;
+    color: var(--ob-text-primary);
+    font-size: 14px;
+}
+
+.onboarding-field__input .select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 40px;
+    right: 8px;
+}
+
+.onboarding-field__input .select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--ob-text-muted);
+}
+
+.onboarding-field__input .select2-container--default.select2-container--open .select2-selection--single {
+    border-color: var(--ob-accent);
+    box-shadow: 0 0 0 2px var(--ob-accent-light);
+}
+
+.onboarding-field--error .select2-container--default .select2-selection--single {
+    border-color: var(--ob-error);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: var(--ob-accent, #2271b1);
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    padding: 8px 12px;
+    border: 1px solid var(--ob-border, #c3c4c7);
+    border-radius: var(--ob-radius, 6px);
+    font-size: 14px;
+    outline: none;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field:focus {
+    border-color: var(--ob-accent, #2271b1);
+    box-shadow: 0 0 0 2px var(--ob-accent-light, #e5f0fa);
+}
+
+.select2-dropdown {
+    border-color: var(--ob-border, #c3c4c7);
+    border-radius: var(--ob-radius, 6px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.select2-results__option {
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   Field Dependencies — Hidden State
+   ========================================================================== */
+
+.onboarding-field--hidden {
+    display: none;
+}
+
+.onboarding-field {
+    transition: opacity 0.15s ease;
+}
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 
@@ -716,7 +861,7 @@
     }
 
     .onboarding-progress__connector {
-        margin-bottom: 0;
+        margin-top: 15px;
     }
 
     .onboarding-navigation {

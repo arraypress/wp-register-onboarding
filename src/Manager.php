@@ -8,14 +8,15 @@
  * - Automatic menu page registration (hidden from nav)
  * - Step-based navigation with progress indicator
  * - Built-in step types: welcome, fields, checklist, complete, callback
- * - Field rendering with automatic wp_options saving
+ * - Field rendering with automatic saving via wp_options or custom storage
  * - Per-field and per-step validation with error display
- * - Option presets for common data (countries, currencies, timezones)
+ * - Select2 for searchable selects (countries, currencies, etc.)
+ * - Option presets via arraypress/wp-currencies and arraypress/wp-countries
+ * - Field dependencies for conditional visibility and attribute swapping
  * - Conditional step visibility via show_if callbacks
  * - Skippable steps with optional skip labels
  * - Activation redirect on first run
  * - Color theming via CSS custom properties
- * - AJAX step saving with nonce verification
  *
  * @package     ArrayPress\RegisterOnboarding
  * @copyright   Copyright (c) 2025, ArrayPress Limited
@@ -27,6 +28,9 @@
 declare( strict_types=1 );
 
 namespace ArrayPress\RegisterOnboarding;
+
+use ArrayPress\Currencies\Currency;
+use ArrayPress\Countries\Countries;
 
 // Exit if accessed directly
 defined( 'ABSPATH' ) || exit;
@@ -76,6 +80,14 @@ class Manager {
 	 */
 	private static array $errors = [];
 
+	/**
+	 * Current wizard ID (set during submission for storage access)
+	 *
+	 * @since 1.0.0
+	 * @var string
+	 */
+	private static string $current_wizard = '';
+
 	/* =========================================================================
 	 * REGISTRATION
 	 * ========================================================================= */
@@ -105,8 +117,11 @@ class Manager {
 			'header_title' => '',
 
 			// Behavior
-			'redirect'        => false,
+			'redirect'         => false,
 			'completed_option' => '',
+
+			// Storage callbacks (optional — defaults to get_option/update_option)
+			'storage' => [],
 
 			// Steps
 			'steps' => [],
@@ -127,6 +142,12 @@ class Manager {
 		if ( empty( $config['menu_slug'] ) ) {
 			$config['menu_slug'] = sanitize_key( $id );
 		}
+
+		// Parse storage callbacks
+		$config['storage'] = wp_parse_args( $config['storage'], [
+			'get'    => null,
+			'update' => null,
+		] );
 
 		// Parse labels
 		$config['labels'] = wp_parse_args( $config['labels'], [
@@ -225,7 +246,6 @@ class Manager {
 				$render_callback
 			);
 		} else {
-			// Register as a hidden page (null parent)
 			add_submenu_page(
 				null,
 				$config['page_title'],
@@ -258,7 +278,7 @@ class Manager {
 
 		foreach ( self::$wizards as $id => $config ) {
 			if ( ( $config['menu_slug'] ?? '' ) === $page ) {
-				self::do_enqueue_assets( $config );
+				self::do_enqueue_assets( $id, $config );
 				break;
 			}
 		}
@@ -267,30 +287,118 @@ class Manager {
 	/**
 	 * Actually enqueue the assets
 	 *
-	 * @param array $config Wizard configuration.
+	 * @param string $id     Wizard identifier.
+	 * @param array  $config Wizard configuration.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function do_enqueue_assets( array $config ): void {
+	private static function do_enqueue_assets( string $id, array $config ): void {
 		if ( self::$assets_enqueued ) {
 			return;
 		}
 		self::$assets_enqueued = true;
 
+		// Select2
+		wp_enqueue_style(
+			'select2',
+			'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css',
+			[],
+			'4.1.0'
+		);
+
+		wp_enqueue_script(
+			'select2',
+			'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js',
+			[ 'jquery' ],
+			'4.1.0',
+			true
+		);
+
+		// Wizard styles
 		wp_enqueue_composer_style(
 			'onboarding-wizard-styles',
 			__FILE__,
 			'css/onboarding-wizard.css'
 		);
 
+		// Wizard scripts
 		wp_enqueue_composer_script(
 			'onboarding-wizard-scripts',
 			__FILE__,
 			'js/onboarding-wizard.js',
-			[],
+			[ 'jquery', 'select2' ],
 			true
 		);
+
+		// Build depends map for current step fields
+		$depends_map = self::build_depends_map( $id, $config );
+
+		wp_localize_script( 'onboarding-wizard-scripts', 'onboardingWizard', [
+			'depends' => $depends_map,
+		] );
+	}
+
+	/**
+	 * Build dependency map for the current step's fields
+	 *
+	 * Produces a JSON-serializable structure the JS uses to show/hide
+	 * fields and swap attributes based on another field's value.
+	 *
+	 * @param string $id     Wizard identifier.
+	 * @param array  $config Wizard configuration.
+	 *
+	 * @return array
+	 * @since 1.0.0
+	 */
+	private static function build_depends_map( string $id, array $config ): array {
+		$current_key = sanitize_key( $_GET['step'] ?? '' );
+		$visible     = self::get_visible_step_keys( $config );
+
+		if ( empty( $current_key ) || ! in_array( $current_key, $visible, true ) ) {
+			$current_key = $visible[0] ?? '';
+		}
+
+		if ( empty( $current_key ) || empty( $config['steps'][ $current_key ] ) ) {
+			return [];
+		}
+
+		$step = $config['steps'][ $current_key ];
+
+		if ( $step['type'] !== 'fields' || empty( $step['fields'] ) ) {
+			return [];
+		}
+
+		$map = [];
+
+		foreach ( $step['fields'] as $key => $field ) {
+			if ( empty( $field['depends'] ) ) {
+				continue;
+			}
+
+			$dep = $field['depends'];
+
+			$entry = [
+				'field'    => $dep['field'] ?? '',
+				'operator' => $dep['operator'] ?? '==',
+				'value'    => $dep['value'] ?? '',
+				'action'   => $dep['action'] ?? 'show',
+			];
+
+			// Attribute overrides when condition is met
+			if ( ! empty( $dep['attrs'] ) ) {
+				$entry['attrs'] = $dep['attrs'];
+			}
+
+			// Attribute values when condition is NOT met (the alternate state)
+			if ( ! empty( $dep['attrs_alt'] ) ) {
+				$entry['attrs_alt'] = $dep['attrs_alt'];
+			}
+
+			$map[ $key ] = $entry;
+		}
+
+		return $map;
 	}
 
 	/* =========================================================================
@@ -299,9 +407,6 @@ class Manager {
 
 	/**
 	 * Handle activation redirect
-	 *
-	 * When 'redirect' is enabled, the wizard sets a transient on plugin
-	 * activation that triggers a one-time redirect to the setup page.
 	 *
 	 * @return void
 	 * @since 1.0.0
@@ -320,12 +425,10 @@ class Manager {
 
 			delete_transient( $transient_key );
 
-			// Don't redirect on bulk activations or AJAX
 			if ( wp_doing_ajax() || isset( $_GET['activate-multi'] ) ) {
 				continue;
 			}
 
-			// Don't redirect if already completed
 			if ( get_option( $config['completed_option'] ) ) {
 				continue;
 			}
@@ -346,8 +449,49 @@ class Manager {
 	 * @since 1.0.0
 	 */
 	public static function set_redirect( string $id ): void {
-		$transient_key = sanitize_key( $id ) . '_redirect';
-		set_transient( $transient_key, 1, 30 );
+		set_transient( sanitize_key( $id ) . '_redirect', 1, 30 );
+	}
+
+	/* =========================================================================
+	 * STORAGE
+	 * ========================================================================= */
+
+	/**
+	 * Get a stored value using the wizard's storage callbacks or wp_options
+	 *
+	 * @param array  $config  Wizard configuration.
+	 * @param string $key     Option/field key.
+	 * @param mixed  $default Default value.
+	 *
+	 * @return mixed
+	 * @since 1.0.0
+	 */
+	private static function storage_get( array $config, string $key, $default = '' ) {
+		if ( ! empty( $config['storage']['get'] ) && is_callable( $config['storage']['get'] ) ) {
+			return call_user_func( $config['storage']['get'], $key, $default );
+		}
+
+		return get_option( $key, $default );
+	}
+
+	/**
+	 * Update a stored value using the wizard's storage callbacks or wp_options
+	 *
+	 * @param array  $config Wizard configuration.
+	 * @param string $key    Option/field key.
+	 * @param mixed  $value  Value to store.
+	 *
+	 * @return void
+	 * @since 1.0.0
+	 */
+	private static function storage_update( array $config, string $key, $value ): void {
+		if ( ! empty( $config['storage']['update'] ) && is_callable( $config['storage']['update'] ) ) {
+			call_user_func( $config['storage']['update'], $key, $value );
+
+			return;
+		}
+
+		update_option( $key, $value );
 	}
 
 	/* =========================================================================
@@ -356,8 +500,6 @@ class Manager {
 
 	/**
 	 * Process step form submissions
-	 *
-	 * Handles validation and saving when a step form is submitted.
 	 *
 	 * @return void
 	 * @since 1.0.0
@@ -375,14 +517,14 @@ class Manager {
 			return;
 		}
 
-		$config = self::$wizards[ $wizard_id ];
+		$config            = self::$wizards[ $wizard_id ];
+		self::$current_wizard = $wizard_id;
 
 		// Verify nonce
 		if ( ! wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'onboarding_step_' . $wizard_id . '_' . $step_key ) ) {
 			wp_die( __( 'Security check failed.', 'arraypress' ) );
 		}
 
-		// Check capability
 		if ( ! current_user_can( $config['capability'] ) ) {
 			wp_die( __( 'You do not have permission to access this page.', 'arraypress' ) );
 		}
@@ -411,18 +553,17 @@ class Manager {
 			}
 		}
 
-		// Validate and save the step
+		// Validate
 		$errors = self::validate_step( $step, $_POST );
 
 		if ( ! empty( $errors ) ) {
-			// Store errors for display — they'll be picked up on re-render
 			self::$errors = $errors;
 
 			return;
 		}
 
-		// Save the step data
-		self::save_step( $step, $_POST );
+		// Save
+		self::save_step( $config, $step, $_POST );
 
 		// Mark as completed if this is the last step
 		$visible_keys = self::get_visible_step_keys( $config );
@@ -442,7 +583,6 @@ class Manager {
 			do_action( 'arraypress_onboarding_completed', $wizard_id, $config );
 			do_action( "arraypress_onboarding_completed_{$wizard_id}", $config );
 
-			// If the complete step has a redirect URL, use it
 			if ( ! empty( $step['redirect'] ) ) {
 				wp_safe_redirect( $step['redirect'] );
 				exit;
@@ -457,7 +597,6 @@ class Manager {
 			exit;
 		}
 
-		// No next step — redirect to admin
 		wp_safe_redirect( admin_url() );
 		exit;
 	}
@@ -478,7 +617,7 @@ class Manager {
 	private static function validate_step( array $step, array $data ): array {
 		$errors = [];
 
-		// Step-level validation callback (for callback type steps)
+		// Step-level validation callback
 		if ( ! empty( $step['validate'] ) && is_callable( $step['validate'] ) ) {
 			$result = call_user_func( $step['validate'], $data );
 
@@ -507,7 +646,6 @@ class Manager {
 						$errors[ $key ] = $result->get_error_message();
 					} elseif ( $result === false ) {
 						$errors[ $key ] = sprintf(
-						/* translators: %s: Field label */
 							__( '%s is invalid.', 'arraypress' ),
 							$field['label'] ?? $key
 						);
@@ -526,13 +664,14 @@ class Manager {
 	/**
 	 * Save a step's data
 	 *
-	 * @param array $step Step configuration.
-	 * @param array $data Submitted POST data.
+	 * @param array $config Wizard configuration.
+	 * @param array $step   Step configuration.
+	 * @param array $data   Submitted POST data.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function save_step( array $step, array $data ): void {
+	private static function save_step( array $config, array $step, array $data ): void {
 		// Custom save callback
 		if ( ! empty( $step['save'] ) && is_callable( $step['save'] ) ) {
 			call_user_func( $step['save'], $data );
@@ -550,7 +689,7 @@ class Manager {
 				$value = $data[ $key ] ?? $field['default'] ?? '';
 				$value = self::sanitize_field_value( $field, $value );
 
-				update_option( $field['option'], $value );
+				self::storage_update( $config, $field['option'], $value );
 			}
 		}
 
@@ -561,10 +700,9 @@ class Manager {
 					continue;
 				}
 
-				// Checkboxes: present in POST = checked, absent = unchecked
-				$value = isset( $data['checklist'][ $index ] ) ? true : false;
+				$value = isset( $data['checklist'][ $index ] );
 
-				update_option( $item['option'], $value );
+				self::storage_update( $config, $item['option'], $value );
 			}
 		}
 	}
@@ -572,14 +710,13 @@ class Manager {
 	/**
 	 * Sanitize a field value based on its type
 	 *
-	 * @param array  $field Field configuration.
-	 * @param mixed  $value Raw value.
+	 * @param array $field Field configuration.
+	 * @param mixed $value Raw value.
 	 *
 	 * @return mixed Sanitized value.
 	 * @since 1.0.0
 	 */
 	private static function sanitize_field_value( array $field, $value ) {
-		// Custom sanitize callback
 		if ( ! empty( $field['sanitize'] ) && is_callable( $field['sanitize'] ) ) {
 			return call_user_func( $field['sanitize'], $value );
 		}
@@ -602,7 +739,6 @@ class Manager {
 
 			case 'select':
 			case 'radio':
-				// Validate against known options
 				$options = self::resolve_options( $field['options'] ?? [] );
 				if ( isset( $options[ $value ] ) ) {
 					return sanitize_text_field( $value );
@@ -667,14 +803,14 @@ class Manager {
 			return;
 		}
 
-		$config       = self::$wizards[ $id ];
-		$visible_keys = self::get_visible_step_keys( $config );
+		$config            = self::$wizards[ $id ];
+		self::$current_wizard = $id;
+		$visible_keys      = self::get_visible_step_keys( $config );
 
 		if ( empty( $visible_keys ) ) {
 			return;
 		}
 
-		// Determine current step
 		$current_key = sanitize_key( $_GET['step'] ?? '' );
 
 		if ( empty( $current_key ) || ! in_array( $current_key, $visible_keys, true ) ) {
@@ -687,17 +823,8 @@ class Manager {
 		$is_first      = $current_index === 0;
 		$is_last       = $current_index === $total_steps - 1;
 
-		// Build inline color overrides
 		$style_attr = self::build_color_style( $config['colors'] );
 
-		/**
-		 * Fires before the wizard renders
-		 *
-		 * @param string $id     Wizard identifier.
-		 * @param array  $config Wizard configuration.
-		 *
-		 * @since 1.0.0
-		 */
 		do_action( 'arraypress_before_render_onboarding', $id, $config );
 		do_action( "arraypress_before_render_onboarding_{$id}", $config );
 
@@ -709,7 +836,7 @@ class Manager {
 				<?php self::render_progress( $config, $visible_keys, $current_index ); ?>
 
 				<div class="onboarding-step-wrap">
-					<?php self::render_step_header( $current_step, $current_index, $total_steps ); ?>
+					<?php self::render_step_header( $current_step ); ?>
 
 					<form method="post" class="onboarding-form" novalidate>
 						<?php wp_nonce_field( 'onboarding_step_' . $id . '_' . $current_key ); ?>
@@ -733,14 +860,6 @@ class Manager {
 		</div>
 		<?php
 
-		/**
-		 * Fires after the wizard renders
-		 *
-		 * @param string $id     Wizard identifier.
-		 * @param array  $config Wizard configuration.
-		 *
-		 * @since 1.0.0
-		 */
 		do_action( 'arraypress_after_render_onboarding', $id, $config );
 		do_action( "arraypress_after_render_onboarding_{$id}", $config );
 	}
@@ -758,16 +877,12 @@ class Manager {
 	 * @since 1.0.0
 	 */
 	private static function render_header( array $config ): void {
-		$logo_url     = $config['logo'] ?? '';
-		$header_title = $config['header_title'];
-
 		?>
 		<div class="onboarding-header">
-			<?php if ( $logo_url ) : ?>
-				<img src="<?php echo esc_url( $logo_url ); ?>" alt="" class="onboarding-header__logo">
-			<?php endif; ?>
-			<?php if ( ! empty( $header_title ) && empty( $logo_url ) ) : ?>
-				<h1 class="onboarding-header__title"><?php echo esc_html( $header_title ); ?></h1>
+			<?php if ( ! empty( $config['logo'] ) ) : ?>
+				<img src="<?php echo esc_url( $config['logo'] ); ?>" alt="" class="onboarding-header__logo">
+			<?php elseif ( ! empty( $config['header_title'] ) ) : ?>
+				<h1 class="onboarding-header__title"><?php echo esc_html( $config['header_title'] ); ?></h1>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -827,16 +942,14 @@ class Manager {
 	}
 
 	/**
-	 * Render the step header (title + description)
+	 * Render the step header
 	 *
-	 * @param array $step          Current step configuration.
-	 * @param int   $current_index Current step index.
-	 * @param int   $total_steps   Total visible step count.
+	 * @param array $step Current step configuration.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function render_step_header( array $step, int $current_index, int $total_steps ): void {
+	private static function render_step_header( array $step ): void {
 		?>
 		<div class="onboarding-step-header">
 			<h2 class="onboarding-step-header__title"><?php echo esc_html( $step['title'] ); ?></h2>
@@ -886,11 +999,11 @@ class Manager {
 				break;
 
 			case 'fields':
-				self::render_fields_step( $step );
+				self::render_fields_step( $step, $config );
 				break;
 
 			case 'checklist':
-				self::render_checklist_step( $step );
+				self::render_checklist_step( $step, $config );
 				break;
 
 			case 'complete':
@@ -902,14 +1015,6 @@ class Manager {
 				break;
 
 			default:
-				/**
-				 * Fires for custom step types
-				 *
-				 * @param array $step   Step configuration.
-				 * @param array $config Wizard configuration.
-				 *
-				 * @since 1.0.0
-				 */
 				do_action( 'arraypress_onboarding_render_step_' . $step['type'], $step, $config );
 				break;
 		}
@@ -918,8 +1023,8 @@ class Manager {
 	/**
 	 * Render navigation buttons
 	 *
-	 * @param array $config Wizard configuration.
-	 * @param array $step   Current step configuration.
+	 * @param array $config   Wizard configuration.
+	 * @param array $step     Current step configuration.
 	 * @param bool  $is_first Whether this is the first step.
 	 * @param bool  $is_last  Whether this is the last step.
 	 *
@@ -927,11 +1032,9 @@ class Manager {
 	 * @since 1.0.0
 	 */
 	private static function render_navigation( array $config, array $step, bool $is_first, bool $is_last ): void {
-		$labels   = $config['labels'];
-		$can_skip = ! empty( $step['skippable'] );
-
-		// Welcome and complete steps don't show back button
-		$show_back = ! $is_first && ! in_array( $step['type'], [ 'welcome' ], true );
+		$labels    = $config['labels'];
+		$can_skip  = ! empty( $step['skippable'] );
+		$show_back = ! $is_first && $step['type'] !== 'welcome';
 
 		?>
 		<div class="onboarding-navigation">
@@ -968,7 +1071,7 @@ class Manager {
 	}
 
 	/**
-	 * Render the exit link below the wizard
+	 * Render the exit link
 	 *
 	 * @param array $config Wizard configuration.
 	 *
@@ -1034,12 +1137,13 @@ class Manager {
 	/**
 	 * Render a fields step
 	 *
-	 * @param array $step Step configuration.
+	 * @param array $step   Step configuration.
+	 * @param array $config Wizard configuration.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function render_fields_step( array $step ): void {
+	private static function render_fields_step( array $step, array $config ): void {
 		if ( empty( $step['fields'] ) ) {
 			return;
 		}
@@ -1047,7 +1151,7 @@ class Manager {
 		?>
 		<div class="onboarding-fields">
 			<?php foreach ( $step['fields'] as $key => $field ) : ?>
-				<?php self::render_field( $key, $field ); ?>
+				<?php self::render_field( $key, $field, $config ); ?>
 			<?php endforeach; ?>
 		</div>
 		<?php
@@ -1056,13 +1160,14 @@ class Manager {
 	/**
 	 * Render a single field
 	 *
-	 * @param string $key   Field key.
-	 * @param array  $field Field configuration.
+	 * @param string $key    Field key.
+	 * @param array  $field  Field configuration.
+	 * @param array  $config Wizard configuration.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function render_field( string $key, array $field ): void {
+	private static function render_field( string $key, array $field, array $config ): void {
 		$type      = $field['type'] ?? 'text';
 		$label     = $field['label'] ?? '';
 		$help      = $field['help'] ?? '';
@@ -1070,11 +1175,11 @@ class Manager {
 		$default   = $field['default'] ?? '';
 		$has_error = isset( self::$errors[ $key ] );
 
-		// Get current value from POST (re-display) or from saved option
+		// Get current value: POST > storage > default
 		$value = $_POST[ $key ] ?? '';
 
 		if ( empty( $value ) && ! empty( $option ) ) {
-			$value = get_option( $option, $default );
+			$value = self::storage_get( $config, $option, $default );
 		}
 
 		if ( empty( $value ) ) {
@@ -1091,8 +1196,14 @@ class Manager {
 			$field_classes[] = 'onboarding-field--error';
 		}
 
+		// Data attributes for depends
+		$data_attrs = '';
+		if ( ! empty( $field['depends'] ) ) {
+			$data_attrs = ' data-depends="' . esc_attr( $key ) . '"';
+		}
+
 		?>
-		<div class="<?php echo esc_attr( implode( ' ', $field_classes ) ); ?>">
+		<div class="<?php echo esc_attr( implode( ' ', $field_classes ) ); ?>"<?php echo $data_attrs; ?>>
 			<?php if ( ! empty( $label ) ) : ?>
 				<label for="field-<?php echo esc_attr( $key ); ?>" class="onboarding-field__label">
 					<?php echo esc_html( $label ); ?>
@@ -1130,7 +1241,9 @@ class Manager {
 			</div>
 
 			<?php if ( ! empty( $help ) ) : ?>
-				<p class="onboarding-field__help"><?php echo esc_html( $help ); ?></p>
+				<p class="onboarding-field__help" data-default-help="<?php echo esc_attr( $help ); ?>">
+					<?php echo esc_html( $help ); ?>
+				</p>
 			<?php endif; ?>
 
 			<?php if ( $has_error ) : ?>
@@ -1146,7 +1259,7 @@ class Manager {
 	 * @param string $key   Field key.
 	 * @param array  $field Field configuration.
 	 * @param string $value Current value.
-	 * @param string $type  Input type (text, email, url, number).
+	 * @param string $type  Input type.
 	 *
 	 * @return void
 	 * @since 1.0.0
@@ -1155,11 +1268,12 @@ class Manager {
 		$placeholder = $field['placeholder'] ?? '';
 
 		printf(
-			'<input type="%s" id="field-%s" name="%s" value="%s" placeholder="%s" class="onboarding-input">',
+			'<input type="%s" id="field-%s" name="%s" value="%s" placeholder="%s" class="onboarding-input" data-default-placeholder="%s">',
 			esc_attr( $type ),
 			esc_attr( $key ),
 			esc_attr( $key ),
 			esc_attr( $value ),
+			esc_attr( $placeholder ),
 			esc_attr( $placeholder )
 		);
 	}
@@ -1177,17 +1291,26 @@ class Manager {
 	private static function render_select_field( string $key, array $field, string $value ): void {
 		$options     = self::resolve_options( $field['options'] ?? [] );
 		$placeholder = $field['placeholder'] ?? '';
+		$searchable  = $field['searchable'] ?? ( count( $options ) > 10 );
+
+		$classes = 'onboarding-select';
+		if ( $searchable ) {
+			$classes .= ' onboarding-select--searchable';
+		}
 
 		?>
 		<select id="field-<?php echo esc_attr( $key ); ?>"
 		        name="<?php echo esc_attr( $key ); ?>"
-		        class="onboarding-select">
+		        class="<?php echo esc_attr( $classes ); ?>"
+			<?php if ( $searchable && ! empty( $placeholder ) ) : ?>
+				data-placeholder="<?php echo esc_attr( $placeholder ); ?>"
+			<?php endif; ?>>
 			<?php if ( ! empty( $placeholder ) ) : ?>
 				<option value=""><?php echo esc_html( $placeholder ); ?></option>
 			<?php endif; ?>
 			<?php foreach ( $options as $opt_value => $opt_label ) : ?>
 				<option value="<?php echo esc_attr( $opt_value ); ?>"
-					<?php selected( $value, $opt_value ); ?>>
+					<?php selected( $value, (string) $opt_value ); ?>>
 					<?php echo esc_html( $opt_label ); ?>
 				</option>
 			<?php endforeach; ?>
@@ -1209,13 +1332,13 @@ class Manager {
 		$options = self::resolve_options( $field['options'] ?? [] );
 
 		?>
-		<div class="onboarding-radio-group">
+		<div class="onboarding-radio-group" id="field-<?php echo esc_attr( $key ); ?>">
 			<?php foreach ( $options as $opt_value => $opt_label ) : ?>
 				<label class="onboarding-radio">
 					<input type="radio"
 					       name="<?php echo esc_attr( $key ); ?>"
 					       value="<?php echo esc_attr( $opt_value ); ?>"
-						<?php checked( $value, $opt_value ); ?>>
+						<?php checked( $value, (string) $opt_value ); ?>>
 					<span class="onboarding-radio__label"><?php echo esc_html( $opt_label ); ?></span>
 				</label>
 			<?php endforeach; ?>
@@ -1241,6 +1364,7 @@ class Manager {
 		<label class="onboarding-toggle">
 			<input type="hidden" name="<?php echo esc_attr( $key ); ?>" value="0">
 			<input type="checkbox"
+			       id="field-<?php echo esc_attr( $key ); ?>"
 			       name="<?php echo esc_attr( $key ); ?>"
 			       value="1"
 				<?php checked( $checked ); ?>
@@ -1268,11 +1392,12 @@ class Manager {
 		$rows        = $field['rows'] ?? 4;
 
 		printf(
-			'<textarea id="field-%s" name="%s" placeholder="%s" rows="%d" class="onboarding-textarea">%s</textarea>',
+			'<textarea id="field-%s" name="%s" placeholder="%s" rows="%d" class="onboarding-textarea" data-default-placeholder="%s">%s</textarea>',
 			esc_attr( $key ),
 			esc_attr( $key ),
 			esc_attr( $placeholder ),
 			absint( $rows ),
+			esc_attr( $placeholder ),
 			esc_textarea( $value )
 		);
 	}
@@ -1280,12 +1405,13 @@ class Manager {
 	/**
 	 * Render a checklist step
 	 *
-	 * @param array $step Step configuration.
+	 * @param array $step   Step configuration.
+	 * @param array $config Wizard configuration.
 	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
-	private static function render_checklist_step( array $step ): void {
+	private static function render_checklist_step( array $step, array $config ): void {
 		if ( empty( $step['items'] ) ) {
 			return;
 		}
@@ -1298,11 +1424,15 @@ class Manager {
 				$default = $item['default'] ?? false;
 				$checked = false;
 
-				// Check POST first, then saved option, then default
 				if ( isset( $_POST['checklist'][ $index ] ) ) {
 					$checked = true;
-				} elseif ( ! empty( $option ) && get_option( $option ) !== false ) {
-					$checked = filter_var( get_option( $option ), FILTER_VALIDATE_BOOLEAN );
+				} elseif ( ! empty( $option ) ) {
+					$stored = self::storage_get( $config, $option, null );
+					if ( $stored !== null ) {
+						$checked = filter_var( $stored, FILTER_VALIDATE_BOOLEAN );
+					} else {
+						$checked = (bool) $default;
+					}
 				} else {
 					$checked = (bool) $default;
 				}
@@ -1380,7 +1510,7 @@ class Manager {
 	 * ========================================================================= */
 
 	/**
-	 * Get visible step keys (filtered by show_if)
+	 * Get visible step keys
 	 *
 	 * @param array $config Wizard configuration.
 	 *
@@ -1404,13 +1534,13 @@ class Manager {
 	}
 
 	/**
-	 * Get the adjacent step key (next or previous)
+	 * Get the adjacent step key
 	 *
 	 * @param array  $config    Wizard configuration.
 	 * @param string $step_key  Current step key.
 	 * @param string $direction 'next' or 'previous'.
 	 *
-	 * @return string|null Next/previous step key or null.
+	 * @return string|null
 	 * @since 1.0.0
 	 */
 	private static function get_adjacent_step( array $config, string $step_key, string $direction ): ?string {
@@ -1455,7 +1585,11 @@ class Manager {
 	/**
 	 * Resolve options — handles presets and raw arrays
 	 *
-	 * @param string|array $options Options definition (preset string or array).
+	 * Uses arraypress/wp-currencies and arraypress/wp-countries for
+	 * the 'currencies' and 'countries' presets. Custom presets can be
+	 * registered via the arraypress_onboarding_preset_{name} filter.
+	 *
+	 * @param string|array $options Options definition.
 	 *
 	 * @return array key => label pairs.
 	 * @since 1.0.0
@@ -1471,13 +1605,10 @@ class Manager {
 
 		switch ( $options ) {
 			case 'currencies':
-				return self::get_currency_options();
+				return Currency::get_options();
 
 			case 'countries':
-				return self::get_country_options();
-
-			case 'us_states':
-				return self::get_us_state_options();
+				return Countries::all();
 
 			case 'timezones':
 				return self::get_timezone_options();
@@ -1486,141 +1617,13 @@ class Manager {
 				/**
 				 * Filter to register custom option presets
 				 *
-				 * @param array  $options Empty array.
-				 * @param string $preset  Preset name.
+				 * @param array $options Empty array.
 				 *
 				 * @return array key => label pairs.
 				 * @since 1.0.0
 				 */
 				return apply_filters( 'arraypress_onboarding_preset_' . $options, [] );
 		}
-	}
-
-	/**
-	 * Get currency options
-	 *
-	 * @return array
-	 * @since 1.0.0
-	 */
-	private static function get_currency_options(): array {
-		return [
-			'USD' => __( 'US Dollar ($)', 'arraypress' ),
-			'EUR' => __( 'Euro (€)', 'arraypress' ),
-			'GBP' => __( 'British Pound (£)', 'arraypress' ),
-			'CAD' => __( 'Canadian Dollar (CA$)', 'arraypress' ),
-			'AUD' => __( 'Australian Dollar (A$)', 'arraypress' ),
-			'JPY' => __( 'Japanese Yen (¥)', 'arraypress' ),
-			'CHF' => __( 'Swiss Franc (CHF)', 'arraypress' ),
-			'CNY' => __( 'Chinese Yuan (¥)', 'arraypress' ),
-			'SEK' => __( 'Swedish Krona (kr)', 'arraypress' ),
-			'NZD' => __( 'New Zealand Dollar (NZ$)', 'arraypress' ),
-			'MXN' => __( 'Mexican Peso (MX$)', 'arraypress' ),
-			'SGD' => __( 'Singapore Dollar (S$)', 'arraypress' ),
-			'HKD' => __( 'Hong Kong Dollar (HK$)', 'arraypress' ),
-			'NOK' => __( 'Norwegian Krone (kr)', 'arraypress' ),
-			'KRW' => __( 'South Korean Won (₩)', 'arraypress' ),
-			'TRY' => __( 'Turkish Lira (₺)', 'arraypress' ),
-			'INR' => __( 'Indian Rupee (₹)', 'arraypress' ),
-			'BRL' => __( 'Brazilian Real (R$)', 'arraypress' ),
-			'ZAR' => __( 'South African Rand (R)', 'arraypress' ),
-			'THB' => __( 'Thai Baht (฿)', 'arraypress' ),
-			'PLN' => __( 'Polish Zloty (zł)', 'arraypress' ),
-			'DKK' => __( 'Danish Krone (kr)', 'arraypress' ),
-			'TWD' => __( 'New Taiwan Dollar (NT$)', 'arraypress' ),
-			'CZK' => __( 'Czech Koruna (Kč)', 'arraypress' ),
-			'ILS' => __( 'Israeli Shekel (₪)', 'arraypress' ),
-			'PHP' => __( 'Philippine Peso (₱)', 'arraypress' ),
-			'AED' => __( 'UAE Dirham (AED)', 'arraypress' ),
-			'CLP' => __( 'Chilean Peso (CLP)', 'arraypress' ),
-			'SAR' => __( 'Saudi Riyal (SAR)', 'arraypress' ),
-			'MYR' => __( 'Malaysian Ringgit (RM)', 'arraypress' ),
-		];
-	}
-
-	/**
-	 * Get country options
-	 *
-	 * @return array
-	 * @since 1.0.0
-	 */
-	private static function get_country_options(): array {
-		return [
-			'US' => __( 'United States', 'arraypress' ),
-			'GB' => __( 'United Kingdom', 'arraypress' ),
-			'CA' => __( 'Canada', 'arraypress' ),
-			'AU' => __( 'Australia', 'arraypress' ),
-			'DE' => __( 'Germany', 'arraypress' ),
-			'FR' => __( 'France', 'arraypress' ),
-			'IT' => __( 'Italy', 'arraypress' ),
-			'ES' => __( 'Spain', 'arraypress' ),
-			'NL' => __( 'Netherlands', 'arraypress' ),
-			'BE' => __( 'Belgium', 'arraypress' ),
-			'AT' => __( 'Austria', 'arraypress' ),
-			'CH' => __( 'Switzerland', 'arraypress' ),
-			'SE' => __( 'Sweden', 'arraypress' ),
-			'NO' => __( 'Norway', 'arraypress' ),
-			'DK' => __( 'Denmark', 'arraypress' ),
-			'FI' => __( 'Finland', 'arraypress' ),
-			'IE' => __( 'Ireland', 'arraypress' ),
-			'PT' => __( 'Portugal', 'arraypress' ),
-			'PL' => __( 'Poland', 'arraypress' ),
-			'CZ' => __( 'Czech Republic', 'arraypress' ),
-			'JP' => __( 'Japan', 'arraypress' ),
-			'KR' => __( 'South Korea', 'arraypress' ),
-			'CN' => __( 'China', 'arraypress' ),
-			'IN' => __( 'India', 'arraypress' ),
-			'BR' => __( 'Brazil', 'arraypress' ),
-			'MX' => __( 'Mexico', 'arraypress' ),
-			'AR' => __( 'Argentina', 'arraypress' ),
-			'CL' => __( 'Chile', 'arraypress' ),
-			'CO' => __( 'Colombia', 'arraypress' ),
-			'ZA' => __( 'South Africa', 'arraypress' ),
-			'NG' => __( 'Nigeria', 'arraypress' ),
-			'EG' => __( 'Egypt', 'arraypress' ),
-			'KE' => __( 'Kenya', 'arraypress' ),
-			'IL' => __( 'Israel', 'arraypress' ),
-			'AE' => __( 'United Arab Emirates', 'arraypress' ),
-			'SA' => __( 'Saudi Arabia', 'arraypress' ),
-			'TR' => __( 'Turkey', 'arraypress' ),
-			'TH' => __( 'Thailand', 'arraypress' ),
-			'SG' => __( 'Singapore', 'arraypress' ),
-			'MY' => __( 'Malaysia', 'arraypress' ),
-			'PH' => __( 'Philippines', 'arraypress' ),
-			'ID' => __( 'Indonesia', 'arraypress' ),
-			'VN' => __( 'Vietnam', 'arraypress' ),
-			'NZ' => __( 'New Zealand', 'arraypress' ),
-			'RU' => __( 'Russia', 'arraypress' ),
-			'UA' => __( 'Ukraine', 'arraypress' ),
-			'RO' => __( 'Romania', 'arraypress' ),
-			'HU' => __( 'Hungary', 'arraypress' ),
-			'GR' => __( 'Greece', 'arraypress' ),
-			'HK' => __( 'Hong Kong', 'arraypress' ),
-			'TW' => __( 'Taiwan', 'arraypress' ),
-		];
-	}
-
-	/**
-	 * Get US state options
-	 *
-	 * @return array
-	 * @since 1.0.0
-	 */
-	private static function get_us_state_options(): array {
-		return [
-			'AL' => 'Alabama', 'AK' => 'Alaska', 'AZ' => 'Arizona', 'AR' => 'Arkansas',
-			'CA' => 'California', 'CO' => 'Colorado', 'CT' => 'Connecticut', 'DE' => 'Delaware',
-			'FL' => 'Florida', 'GA' => 'Georgia', 'HI' => 'Hawaii', 'ID' => 'Idaho',
-			'IL' => 'Illinois', 'IN' => 'Indiana', 'IA' => 'Iowa', 'KS' => 'Kansas',
-			'KY' => 'Kentucky', 'LA' => 'Louisiana', 'ME' => 'Maine', 'MD' => 'Maryland',
-			'MA' => 'Massachusetts', 'MI' => 'Michigan', 'MN' => 'Minnesota', 'MS' => 'Mississippi',
-			'MO' => 'Missouri', 'MT' => 'Montana', 'NE' => 'Nebraska', 'NV' => 'Nevada',
-			'NH' => 'New Hampshire', 'NJ' => 'New Jersey', 'NM' => 'New Mexico', 'NY' => 'New York',
-			'NC' => 'North Carolina', 'ND' => 'North Dakota', 'OH' => 'Ohio', 'OK' => 'Oklahoma',
-			'OR' => 'Oregon', 'PA' => 'Pennsylvania', 'RI' => 'Rhode Island', 'SC' => 'South Carolina',
-			'SD' => 'South Dakota', 'TN' => 'Tennessee', 'TX' => 'Texas', 'UT' => 'Utah',
-			'VT' => 'Vermont', 'VA' => 'Virginia', 'WA' => 'Washington', 'WV' => 'West Virginia',
-			'WI' => 'Wisconsin', 'WY' => 'Wyoming', 'DC' => 'District of Columbia',
-		];
 	}
 
 	/**
@@ -1637,7 +1640,7 @@ class Manager {
 			$parts = explode( '/', $zone, 2 );
 
 			if ( count( $parts ) === 2 ) {
-				$label             = str_replace( [ '/', '_' ], [ ' — ', ' ' ], $parts[1] );
+				$label              = str_replace( [ '/', '_' ], [ ' — ', ' ' ], $parts[1] );
 				$timezones[ $zone ] = $parts[0] . ' — ' . $label;
 			}
 		}
@@ -1651,8 +1654,6 @@ class Manager {
 
 	/**
 	 * Normalize step definitions
-	 *
-	 * Ensures every step has all required keys with sensible defaults.
 	 *
 	 * @param array $steps Raw step definitions.
 	 *
@@ -1689,13 +1690,9 @@ class Manager {
 	/**
 	 * Build inline CSS style attribute from color overrides
 	 *
-	 * Maps config color keys to CSS custom properties. Only non-empty
-	 * values are included, so anything not set falls back to the
-	 * :root defaults in the stylesheet.
-	 *
 	 * @param array $colors Color overrides from config.
 	 *
-	 * @return string The style attribute string (with leading space) or empty.
+	 * @return string The style attribute string or empty.
 	 * @since 1.0.0
 	 */
 	private static function build_color_style( array $colors ): string {
@@ -1704,21 +1701,21 @@ class Manager {
 		}
 
 		$map = [
-			'accent'       => '--ob-accent',
-			'accent_hover' => '--ob-accent-hover',
-			'accent_light' => '--ob-accent-light',
-			'success'      => '--ob-success',
-			'error'        => '--ob-error',
-			'text_primary' => '--ob-text-primary',
+			'accent'         => '--ob-accent',
+			'accent_hover'   => '--ob-accent-hover',
+			'accent_light'   => '--ob-accent-light',
+			'success'        => '--ob-success',
+			'error'          => '--ob-error',
+			'text_primary'   => '--ob-text-primary',
 			'text_secondary' => '--ob-text-secondary',
-			'text_muted'   => '--ob-text-muted',
-			'border'       => '--ob-border',
-			'border_light' => '--ob-border-light',
-			'bg_white'     => '--ob-bg-white',
-			'bg_subtle'    => '--ob-bg-subtle',
-			'bg_page'      => '--ob-bg-page',
-			'radius'       => '--ob-radius',
-			'radius_lg'    => '--ob-radius-lg',
+			'text_muted'     => '--ob-text-muted',
+			'border'         => '--ob-border',
+			'border_light'   => '--ob-border-light',
+			'bg_white'       => '--ob-bg-white',
+			'bg_subtle'      => '--ob-bg-subtle',
+			'bg_page'        => '--ob-bg-page',
+			'radius'         => '--ob-radius',
+			'radius_lg'      => '--ob-radius-lg',
 		];
 
 		$declarations = [];
@@ -1802,7 +1799,7 @@ class Manager {
 	 *
 	 * @param string $id Wizard identifier.
 	 *
-	 * @return bool True if removed.
+	 * @return bool
 	 * @since 1.0.0
 	 */
 	public static function unregister( string $id ): bool {
