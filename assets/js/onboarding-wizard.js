@@ -1,8 +1,8 @@
 /**
  * Onboarding Wizard Scripts
  *
- * Handles Select2 initialization, field dependencies,
- * navigation direction, and keyboard accessibility.
+ * Handles Select2 initialization, field dependencies, sync step
+ * integration, navigation direction, confetti, and keyboard accessibility.
  *
  * @package ArrayPress\RegisterOnboarding
  */
@@ -289,6 +289,26 @@
     }
 
     /* =========================================================================
+     * SYNC STEP INTEGRATION
+     *
+     * When the current step is a sync step, the Continue button starts
+     * disabled. It's enabled when the inline-sync library fires its
+     * completion event. This ensures users complete the sync before
+     * advancing (or they can skip if the step is skippable).
+     * ========================================================================= */
+
+    if (typeof onboardingWizard !== 'undefined' && onboardingWizard.syncStep) {
+        $(document).on('inline-sync:complete', function () {
+            const nextBtn = form.querySelector('.onboarding-btn--next');
+
+            if (nextBtn) {
+                nextBtn.disabled = false;
+                nextBtn.classList.add('onboarding-btn--sync-ready');
+            }
+        });
+    }
+
+    /* =========================================================================
      * FIELD FOCUS
      * ========================================================================= */
 
@@ -433,7 +453,7 @@
 
             const nextBtn = form.querySelector('.onboarding-btn--next');
 
-            if (nextBtn) {
+            if (nextBtn && !nextBtn.disabled) {
                 nextBtn.click();
             }
         }
