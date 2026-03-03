@@ -204,7 +204,7 @@ class Manager {
 		add_action( 'admin_menu', [ __CLASS__, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
 		add_filter( 'admin_body_class', [ __CLASS__, 'add_body_class' ] );
-		add_action( 'admin_init', [ __CLASS__, 'register_sync_steps' ] );
+		add_action( 'init', [ __CLASS__, 'register_sync_steps' ] );
 		add_action( 'admin_init', [ __CLASS__, 'process_step_submission' ] );
 		add_action( 'admin_init', [ __CLASS__, 'maybe_redirect' ] );
 	}
