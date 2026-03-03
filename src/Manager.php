@@ -116,35 +116,35 @@ class Manager {
 
 		$defaults = [
 			// Menu registration
-			'page_title'       => '',
-			'menu_title'       => '',
-			'menu_slug'        => '',
-			'parent_slug'      => '',
-			'capability'       => 'manage_options',
+			'page_title'  => '',
+			'menu_title'  => '',
+			'menu_slug'   => '',
+			'parent_slug' => '',
+			'capability'  => 'manage_options',
 
 			// Header
-			'logo'             => '',
-			'header_title'     => '',
+			'logo'         => '',
+			'header_title' => '',
 
 			// Behavior
 			'redirect'         => false,
 			'completed_option' => '',
 
 			// Custom value callbacks
-			'get_callback'     => null,
-			'update_callback'  => null,
+			'get_callback'    => null,
+			'update_callback' => null,
 
 			// Steps
-			'steps'            => [],
+			'steps' => [],
 
 			// Display
-			'body_class'       => '',
+			'body_class' => '',
 
 			// Colors
-			'colors'           => [],
+			'colors' => [],
 
 			// Labels
-			'labels'           => [],
+			'labels' => [],
 		];
 
 		$config = wp_parse_args( $config, $defaults );
@@ -204,6 +204,7 @@ class Manager {
 		add_action( 'admin_menu', [ __CLASS__, 'register_menus' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
 		add_filter( 'admin_body_class', [ __CLASS__, 'add_body_class' ] );
+		add_action( 'admin_init', [ __CLASS__, 'register_sync_steps' ] );
 		add_action( 'admin_init', [ __CLASS__, 'process_step_submission' ] );
 		add_action( 'admin_init', [ __CLASS__, 'maybe_redirect' ] );
 	}
