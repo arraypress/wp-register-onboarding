@@ -2,7 +2,7 @@
 
 A declarative system for registering WordPress admin onboarding wizards. Guide users through multi-step plugin setup
 flows with built-in field rendering, validation, auto-saving, Select2 for searchable dropdowns, field dependencies,
-and progress tracking.
+conditional steps, confetti celebrations, and progress tracking.
 
 ## Installation
 
@@ -16,9 +16,9 @@ Ships with `arraypress/wp-currencies` and `arraypress/wp-countries` for built-in
 
 ```php
 register_onboarding( 'my-plugin-setup', [
-    'page_title' => 'Setup Wizard',
-    'menu_slug'  => 'my-plugin-setup',
-    'logo'       => plugin_dir_url( __FILE__ ) . 'assets/logo.png',
+    'header_title' => 'My Plugin Setup',
+    'menu_slug'    => 'my-plugin-setup',
+    'logo'         => plugin_dir_url( __FILE__ ) . 'assets/logo.png',
 
     'steps' => [
         'welcome' => [
@@ -40,8 +40,9 @@ register_onboarding( 'my-plugin-setup', [
             ],
         ],
         'done' => [
-            'title' => 'All Done!',
-            'type'  => 'complete',
+            'title'    => 'All Done!',
+            'type'     => 'complete',
+            'confetti' => true,
         ],
     ],
 ] );
@@ -50,26 +51,24 @@ register_onboarding( 'my-plugin-setup', [
 ## Configuration Reference
 
 ```php
-register_onboarding( 'wizard_id', [
+register_onboarding( 'wizard-id', [
     // Menu Registration
-    'page_title'  => 'Setup Wizard',
-    'menu_slug'   => 'my-setup',
-    'parent_slug' => '',
+    'page_title'  => 'Setup Wizard',     // Browser tab title (auto-set from header_title)
+    'menu_title'  => 'Setup Wizard',     // Sidebar label when parent_slug is set (auto-set from page_title)
+    'menu_slug'   => 'my-setup',         // URL slug (auto-set from wizard ID)
+    'parent_slug' => '',                 // Empty = hidden page, or parent menu slug
     'capability'  => 'manage_options',
 
     // Header
-    'logo'         => '',
-    'header_title' => '',
+    'logo'         => '',                // URL to logo image (displayed instead of title)
+    'header_title' => '',                // Text header (used when no logo)
 
     // Behavior
-    'redirect'         => false,
-    'completed_option' => '',
+    'redirect' => true,                  // Auto-redirect to wizard on plugin activation
 
-    // Storage (optional — defaults to get_option/update_option)
-    'storage' => [
-        'get'    => function( $key, $default ) { ... },
-        'update' => function( $key, $value ) { ... },
-    ],
+    // Value Callbacks (optional — defaults to get_option/update_option)
+    'get_callback'    => function( string $key, $default ) { ... },
+    'update_callback' => function( string $key, $value ) { ... },
 
     // Steps
     'steps' => [],
@@ -89,29 +88,26 @@ register_onboarding( 'wizard_id', [
 ] );
 ```
 
-## Storage
+### Auto-Generated Defaults
 
-By default, each field's `option` key maps to its own `wp_options` row via `get_option` / `update_option`.
+Several configuration keys are auto-generated when not provided:
 
-To use a custom storage backend (like `arraypress/wp-register-setting-fields`), provide `get` and `update` callbacks:
+| Key                | Generated From                    | Example                     |
+|--------------------|-----------------------------------|-----------------------------|
+| `page_title`       | Falls back to "Setup Wizard"      | `Setup Wizard`              |
+| `menu_title`       | Falls back to `page_title`        | `Setup Wizard`              |
+| `header_title`     | Falls back to `page_title`        | `Setup Wizard`              |
+| `menu_slug`        | Sanitized wizard ID               | `my-plugin-setup`           |
+| `completed_option` | Wizard ID with hyphens normalized | `my_plugin_setup_completed` |
 
-```php
-'storage' => [
-    'get'    => function( string $key, $default = null ) {
-        return get_setting_field_value( 'my_settings', $key, $default );
-    },
-    'update' => function( string $key, $value ) {
-        return update_setting_field_value( 'my_settings', $key, $value );
-    },
-],
-```
-
-When storage callbacks are defined, the field's `option` key becomes a field key within that system rather than a
-standalone `wp_options` key.
+The `completed_option` key is stored in `wp_options` as a timestamp when the wizard finishes. You rarely
+need to set this manually.
 
 ## Step Types
 
 ### Welcome
+
+An introductory step with an optional image and feature highlights.
 
 ```php
 'welcome' => [
@@ -120,31 +116,56 @@ standalone `wp_options` key.
     'description' => 'We\'ll have you set up in under 2 minutes.',
     'image'       => plugin_dir_url( __FILE__ ) . 'assets/welcome.svg',
     'features'    => [
-        [ 'icon' => 'dashicons-cart', 'title' => 'Accept Payments', 'description' => '...' ],
+        [
+            'icon'        => 'dashicons-cart',
+            'title'       => 'Accept Payments',
+            'description' => 'Connect Stripe and start selling.',
+        ],
+        [
+            'icon'        => 'dashicons-chart-area',
+            'title'       => 'Track Revenue',
+            'description' => 'Real-time analytics and reports.',
+        ],
     ],
 ],
 ```
 
 ### Fields
 
+A step with form fields that are automatically rendered, validated, and saved.
+
 ```php
 'settings' => [
     'title'  => 'Store Settings',
     'type'   => 'fields',
     'fields' => [
+        'store_name' => [
+            'type'        => 'text',
+            'label'       => 'Store Name',
+            'placeholder' => 'My Awesome Store',
+            'option'      => 'store_name',
+            'help'        => 'This appears in emails and receipts.',
+            'validate'    => function( $value ) {
+                if ( empty( trim( $value ) ) ) {
+                    return new WP_Error( 'required', 'Store name is required.' );
+                }
+                return true;
+            },
+        ],
         'currency' => [
-            'type'    => 'select',
-            'label'   => 'Currency',
-            'options' => 'currencies',
-            'default' => 'USD',
-            'option'  => 'myplugin_currency',
+            'type'       => 'select',
+            'label'      => 'Currency',
+            'options'    => 'currencies',
+            'default'    => 'USD',
+            'option'     => 'currency',
+            'searchable' => true,
         ],
         'email' => [
-            'type'        => 'email',
-            'label'       => 'Email',
-            'default'     => '{admin_email}',
-            'option'      => 'myplugin_email',
-            'validate'    => 'is_email',
+            'type'     => 'email',
+            'label'    => 'Notification Email',
+            'default'  => '{admin_email}',
+            'option'   => 'notification_email',
+            'validate' => 'is_email',
         ],
     ],
 ],
@@ -152,70 +173,223 @@ standalone `wp_options` key.
 
 **Supported field types:** `text`, `email`, `url`, `number`, `textarea`, `select`, `radio`, `toggle`
 
-Select fields with more than 10 options automatically get Select2 search. Override with `'searchable' => true/false`.
+The `{admin_email}` placeholder is automatically replaced with the site's admin email address.
+
+#### Field Options
+
+| Key           | Type            | Description                                                            |
+|---------------|-----------------|------------------------------------------------------------------------|
+| `type`        | `string`        | Field type (see supported types above)                                 |
+| `label`       | `string`        | Label displayed above the field                                        |
+| `placeholder` | `string`        | Placeholder text for text-based inputs                                 |
+| `help`        | `string`        | Help text displayed below the field                                    |
+| `default`     | `mixed`         | Default value                                                          |
+| `option`      | `string`        | Storage key (wp_options key or custom callback key)                    |
+| `options`     | `array\|string` | Options for select/radio (array or preset string)                      |
+| `searchable`  | `bool`          | Force Select2 on/off (auto-enabled for 10+ options)                    |
+| `validate`    | `callable`      | Validation callback — return `true` or `WP_Error`                      |
+| `sanitize`    | `callable`      | Custom sanitization callback (auto-sanitized by type)                  |
+| `depends`     | `array`         | Field dependency rules (see [Field Dependencies](#field-dependencies)) |
+| `rows`        | `int`           | Row count for `textarea` fields (default: 4)                           |
+| `description` | `string`        | Description text for `toggle` fields                                   |
 
 ### Checklist
 
+A step with toggle items for enabling/disabling features.
+
 ```php
 'features' => [
-    'title' => 'Enable Features',
-    'type'  => 'checklist',
-    'items' => [
-        [ 'label' => 'Email Receipts', 'description' => '...', 'option' => 'myplugin_receipts', 'default' => true ],
+    'title'       => 'Enable Features',
+    'type'        => 'checklist',
+    'description' => 'Choose which features to enable.',
+    'items'       => [
+        [
+            'label'       => 'Email Receipts',
+            'description' => 'Automatically send receipts after each purchase.',
+            'option'      => 'email_receipts',
+            'default'     => true,
+        ],
+        [
+            'label'       => 'PDF Invoices',
+            'description' => 'Generate and attach PDF invoices to order emails.',
+            'option'      => 'pdf_invoices',
+            'default'     => false,
+        ],
     ],
 ],
 ```
 
 ### Complete
 
+A success step with action links and an optional confetti celebration.
+
 ```php
 'done' => [
-    'title' => 'You\'re All Set!',
-    'type'  => 'complete',
-    'links' => [
-        [ 'label' => 'Create Product', 'url' => admin_url( '...' ) ],
-        [ 'label' => 'View Docs', 'url' => 'https://...', 'external' => true ],
+    'title'       => 'You\'re All Set!',
+    'type'        => 'complete',
+    'description' => 'Your plugin is configured and ready to go.',
+    'confetti'    => true,
+    'links'       => [
+        [ 'label' => 'Create Product', 'url' => admin_url( 'post-new.php?post_type=product' ) ],
+        [ 'label' => 'View Dashboard', 'url' => admin_url() ],
+        [ 'label' => 'Read the Docs', 'url' => 'https://docs.example.com', 'external' => true ],
     ],
 ],
 ```
+
+Setting `confetti` to `true` triggers a lightweight canvas-based confetti burst when the step renders. No
+external dependencies — the animation creates a temporary overlay, fires particles with gravity and drag,
+fades out after ~3 seconds, and cleans itself up.
 
 ### Callback
 
+A fully custom step where you provide your own render, validate, and save functions.
+
 ```php
-'custom' => [
-    'title'    => 'Connect Stripe',
-    'type'     => 'callback',
-    'render'   => 'my_render_callback',
-    'validate' => 'my_validate_callback',
-    'save'     => 'my_save_callback',
+'branding' => [
+    'title'     => 'Store Branding',
+    'type'      => 'callback',
+    'skippable' => true,
+    'render'    => 'my_render_branding',
+    'validate'  => 'my_validate_branding',
+    'save'      => 'my_save_branding',
 ],
 ```
 
+All three callbacks receive the step configuration array. The `validate` callback should return `true`
+or a `WP_Error`. The `save` callback receives the submitted `$_POST` data.
+
+## Step Options
+
+These options are available on all step types:
+
+| Key           | Type       | Description                                                         |
+|---------------|------------|---------------------------------------------------------------------|
+| `title`       | `string`   | Step title displayed in the header and progress bar                 |
+| `description` | `string`   | Description text below the title                                    |
+| `type`        | `string`   | Step type: `welcome`, `fields`, `checklist`, `complete`, `callback` |
+| `show_if`     | `callable` | PHP callback — return `false` to skip this step entirely            |
+| `skippable`   | `bool`     | Show a skip button (default: `false`)                               |
+| `skip_label`  | `string`   | Custom skip button text                                             |
+| `confetti`    | `bool`     | Trigger confetti animation on this step (default: `false`)          |
+| `validate`    | `callable` | Step-level validation callback                                      |
+| `save`        | `callable` | Step-level custom save callback                                     |
+
+## Conditional Steps
+
+Use `show_if` to conditionally show or hide entire steps based on server-side logic. The callback runs
+on each page load — the step is completely removed from the wizard (not just hidden) when it returns `false`.
+
+```php
+'payments' => [
+    'title'   => 'Payment Gateway',
+    'type'    => 'fields',
+    'show_if' => function() {
+        // Only show if Stripe isn't already configured
+        $options = get_option( 'my_settings', [] );
+        return empty( $options['stripe_key'] );
+    },
+    'fields' => [ ... ],
+],
+```
+
+This is different from field dependencies which control visibility *within* a step using client-side
+JavaScript. `show_if` is server-side and controls whether the step exists at all.
+
 ## Field Dependencies
 
-Fields can be shown/hidden or have their attributes swapped based on another field's value:
+Fields can be shown/hidden or have their attributes swapped based on another field's value on the same step.
+Dependencies are evaluated in the browser as the user interacts with the form.
+
+### Simple Dependency (Single Rule)
+
+Show or hide a field based on another field's value:
 
 ```php
 'fields' => [
-    'test_mode' => [
-        'type'    => 'toggle',
-        'label'   => 'Test Mode',
-        'default' => true,
-        'option'  => 'myplugin_test_mode',
+    'gateway' => [
+        'type'    => 'radio',
+        'label'   => 'Payment Gateway',
+        'options' => [
+            'stripe' => 'Stripe',
+            'paypal' => 'PayPal',
+            'both'   => 'Both',
+        ],
+        'default' => 'stripe',
+        'option'  => 'gateway',
     ],
-    'stripe_key' => [
-        'type'        => 'text',
-        'label'       => 'Stripe Key',
-        'placeholder' => 'pk_live_...',
-        'option'      => 'myplugin_stripe_key',
-        'depends'     => [
-            'field'    => 'test_mode',
-            'operator' => '==',
-            'value'    => '1',
-            'action'   => 'swap',
-            'attrs'    => [
+    'paypal_client_id' => [
+        'type'    => 'text',
+        'label'   => 'PayPal Client ID',
+        'option'  => 'paypal_client_id',
+        'depends' => [
+            'field'    => 'gateway',
+            'operator' => 'in',
+            'value'    => [ 'paypal', 'both' ],
+            'action'   => 'show',
+        ],
+    ],
+],
+```
+
+### Attribute Swapping
+
+Keep a field visible but swap its placeholder, help text, or label based on another field:
+
+```php
+'stripe_key' => [
+    'type'        => 'text',
+    'label'       => 'Stripe Publishable Key',
+    'placeholder' => 'pk_test_...',
+    'help'        => 'Test mode — no real charges.',
+    'option'      => 'stripe_key',
+    'depends'     => [
+        'field'     => 'test_mode',
+        'operator'  => '==',
+        'value'     => '1',
+        'action'    => 'swap',
+        'attrs'     => [
+            'placeholder' => 'pk_test_...',
+            'help'        => 'Test mode — no real charges.',
+        ],
+        'attrs_alt' => [
+            'placeholder' => 'pk_live_...',
+            'help'        => 'Live mode — real charges will apply.',
+        ],
+    ],
+],
+```
+
+When the condition is met, `attrs` values are applied. When it's not met, `attrs_alt` values are applied.
+
+### Multiple Rules Per Field
+
+A field can have multiple dependency rules. Pass an array of rule objects:
+
+```php
+'stripe_key' => [
+    'type'        => 'text',
+    'label'       => 'Stripe Key',
+    'placeholder' => 'pk_test_...',
+    'help'        => 'Test mode — no real charges.',
+    'option'      => 'stripe_key',
+    'depends'     => [
+        // Rule 1: Only visible when Stripe is selected
+        [
+            'field'    => 'gateway',
+            'operator' => 'in',
+            'value'    => [ 'stripe', 'both' ],
+            'action'   => 'show',
+        ],
+        // Rule 2: Swap placeholders based on test mode
+        [
+            'field'     => 'test_mode',
+            'operator'  => '==',
+            'value'     => '1',
+            'action'    => 'swap',
+            'attrs'     => [
                 'placeholder' => 'pk_test_...',
-                'help'        => 'Using test mode — no real charges.',
+                'help'        => 'Test mode — no real charges.',
             ],
             'attrs_alt' => [
                 'placeholder' => 'pk_live_...',
@@ -226,28 +400,72 @@ Fields can be shown/hidden or have their attributes swapped based on another fie
 ],
 ```
 
-### Dependency Options
+Both single-object and array-of-objects syntax are supported. The library auto-detects which format
+you're using.
 
-| Key          | Description                                                   |
-|--------------|---------------------------------------------------------------|
-| `field`      | Source field key to watch                                     |
-| `operator`   | `==`, `!=`, `in`, `not_in` (default: `==`)                   |
-| `value`      | Value to compare (string, or array for `in`/`not_in`)        |
-| `action`     | `show` = toggle visibility, `swap` = swap attributes only    |
-| `attrs`      | Attributes to apply when condition is **met**                 |
-| `attrs_alt`  | Attributes to apply when condition is **not met**             |
+For visibility, if *any* `show` rule fails, the field is hidden. Attribute `swap` rules are applied
+independently regardless of other rules.
 
-Swappable attributes: `placeholder`, `help`, `label`
+### Dependency Reference
+
+| Key         | Type            | Description                                               |
+|-------------|-----------------|-----------------------------------------------------------|
+| `field`     | `string`        | Source field key to watch                                 |
+| `operator`  | `string`        | `==`, `!=`, `in`, `not_in` (default: `==`)                |
+| `value`     | `string\|array` | Value to compare (string, or array for `in`/`not_in`)     |
+| `action`    | `string`        | `show` = toggle visibility, `swap` = swap attributes only |
+| `attrs`     | `array`         | Attributes applied when condition is **met**              |
+| `attrs_alt` | `array`         | Attributes applied when condition is **not met**          |
+
+**Swappable attributes:** `placeholder`, `help`, `label`
+
+## Value Callbacks
+
+By default, each field's `option` key maps to its own `wp_options` row via `get_option` / `update_option`.
+
+To use a custom storage backend (like a single serialized array or `arraypress/wp-register-setting-fields`),
+provide `get_callback` and `update_callback`:
+
+```php
+register_onboarding( 'my-plugin-setup', [
+    'get_callback'    => fn( $key, $default ) => get_setting_field_value( 'my_plugin', $key, $default ),
+    'update_callback' => fn( $key, $value )   => update_setting_field_value( 'my_plugin', $key, $value ),
+
+    'steps' => [ ... ],
+] );
+```
+
+Or store everything in a single option array:
+
+```php
+register_onboarding( 'my-plugin-setup', [
+    'get_callback' => function( string $key, $default = '' ) {
+        $options = get_option( 'my_plugin_settings', [] );
+        return $options[ $key ] ?? $default;
+    },
+    'update_callback' => function( string $key, $value ) {
+        $options         = get_option( 'my_plugin_settings', [] );
+        $options[ $key ] = $value;
+        update_option( 'my_plugin_settings', $options );
+    },
+
+    'steps' => [ ... ],
+] );
+```
+
+When callbacks are provided, the field's `option` key becomes a key within your storage system rather
+than a standalone `wp_options` key. The library calls `get_callback` when pre-populating fields and
+`update_callback` on save.
 
 ## Option Presets
 
 String shorthand for common select options:
 
-| Preset       | Source                           | Count |
-|--------------|----------------------------------|-------|
-| `currencies` | `arraypress/wp-currencies`       | 136   |
-| `countries`  | `arraypress/wp-countries`        | 249   |
-| `timezones`  | PHP `timezone_identifiers_list`  | ~400  |
+| Preset       | Source                          | Count |
+|--------------|---------------------------------|-------|
+| `currencies` | `arraypress/wp-currencies`      | 136   |
+| `countries`  | `arraypress/wp-countries`       | 249   |
+| `timezones`  | PHP `timezone_identifiers_list` | ~400  |
 
 Custom presets via filter:
 
@@ -257,7 +475,17 @@ add_filter( 'arraypress_onboarding_preset_my_options', function() {
 } );
 ```
 
-## Select2 for Long Lists
+Then use in a field:
+
+```php
+'my_field' => [
+    'type'    => 'select',
+    'label'   => 'My Field',
+    'options' => 'my_options',
+],
+```
+
+## Select2
 
 Selects with more than 10 options automatically get Select2 for search and filtering.
 Control it per field with the `searchable` flag:
@@ -275,72 +503,44 @@ Control it per field with the `searchable` flag:
 ],
 ```
 
-## Custom Storage
+## Activation Redirect
 
-By default, each field's `option` key maps to an individual `wp_options` row. To store everything in a
-single serialized array (e.g. via `arraypress/wp-register-setting-fields`), provide `storage` callbacks:
+Redirect the user to the wizard immediately after plugin activation:
 
 ```php
 register_onboarding( 'my-plugin-setup', [
-    'storage' => [
-        'get'    => fn( $key, $default ) => get_setting_field_value( 'my_plugin', $key, $default ),
-        'update' => fn( $key, $value )   => update_setting_field_value( 'my_plugin', $key, $value ),
-    ],
-    'steps' => [ ... ],
+    'redirect' => true,
+    'steps'    => [ ... ],
 ] );
 ```
 
-When `storage` callbacks are set, the field `option` key becomes a key within your storage system rather
-than a standalone `wp_options` key. The library calls `get` when pre-populating fields and `update` on save.
-
-## Field Dependencies
-
-Show/hide fields or swap attributes based on another field's value:
+Then in your plugin's main file:
 
 ```php
-'stripe_key' => [
-    'type'        => 'text',
-    'label'       => 'Stripe Key',
-    'placeholder' => 'pk_test_...',
-    'help'        => 'Test mode — no real charges.',
-    'depends'     => [
-        'field'    => 'test_mode',       // Source field key
-        'operator' => '==',              // ==, !=, in, not_in
-        'value'    => '1',               // Value to match
-        'action'   => 'show',            // 'show' or 'swap'
-        'attrs'    => [                  // Applied when condition met
-            'placeholder' => 'pk_test_...',
-            'help'        => 'Test mode — no real charges.',
-        ],
-        'attrs_alt' => [                 // Applied when condition NOT met
-            'placeholder' => 'pk_live_...',
-            'help'        => 'Live mode — real charges.',
-        ],
-    ],
-],
-```
-
-The `action` controls behavior: `show` hides the field when the condition is false, `swap` keeps it visible
-but swaps attributes. Swappable attributes: `placeholder`, `help`, `label`.
-
-## Activation Redirect
-
-```php
-'redirect' => true,
-
 register_activation_hook( __FILE__, function() {
-    \ArrayPress\RegisterOnboarding\Manager::set_redirect( 'my-plugin-setup' );
+    register_onboarding_redirect( 'my-plugin-setup' );
 } );
 ```
 
+The redirect only fires once (via a transient), only for single-plugin activation (not bulk), and
+only when the wizard hasn't already been completed.
+
 ## Completion Tracking
 
+The wizard automatically stores a timestamp in `wp_options` when the user reaches the last step.
+The option key is auto-generated from the wizard ID (e.g. `my_plugin_setup_completed`).
+
 ```php
+// Check if the wizard has been completed
 \ArrayPress\RegisterOnboarding\Manager::is_completed( 'my-plugin-setup' );
+
+// Reset the wizard (allows it to run again)
 \ArrayPress\RegisterOnboarding\Manager::reset( 'my-plugin-setup' );
 ```
 
 ## Colors
+
+Override the wizard's color scheme via CSS custom properties:
 
 ```php
 'colors' => [
@@ -350,17 +550,85 @@ register_activation_hook( __FILE__, function() {
 ],
 ```
 
-Available: `accent`, `accent_hover`, `accent_light`, `success`, `error`, `text_primary`, `text_secondary`,
-`text_muted`, `border`, `border_light`, `bg_white`, `bg_subtle`, `bg_page`, `radius`, `radius_lg`
+**Available color keys:**
+
+| Key              | CSS Variable          | Description             |
+|------------------|-----------------------|-------------------------|
+| `accent`         | `--ob-accent`         | Primary accent color    |
+| `accent_hover`   | `--ob-accent-hover`   | Accent hover state      |
+| `accent_light`   | `--ob-accent-light`   | Light accent background |
+| `success`        | `--ob-success`        | Success state color     |
+| `error`          | `--ob-error`          | Error state color       |
+| `text_primary`   | `--ob-text-primary`   | Primary text color      |
+| `text_secondary` | `--ob-text-secondary` | Secondary text color    |
+| `text_muted`     | `--ob-text-muted`     | Muted/disabled text     |
+| `border`         | `--ob-border`         | Default border color    |
+| `border_light`   | `--ob-border-light`   | Light border color      |
+| `bg_white`       | `--ob-bg-white`       | Card background         |
+| `bg_subtle`      | `--ob-bg-subtle`      | Subtle background       |
+| `bg_page`        | `--ob-bg-page`        | Page background         |
+| `radius`         | `--ob-radius`         | Default border radius   |
+| `radius_lg`      | `--ob-radius-lg`      | Large border radius     |
 
 ## Hooks
 
+### Actions
+
 ```php
-do_action( 'arraypress_before_render_onboarding', $id, $config );
-do_action( 'arraypress_after_render_onboarding', $id, $config );
-do_action( 'arraypress_onboarding_completed', $id, $config );
+// Before/after wizard page renders
+do_action( 'arraypress_before_render_onboarding', $wizard_id, $config );
+do_action( 'arraypress_before_render_onboarding_{wizard_id}', $config );
+do_action( 'arraypress_after_render_onboarding', $wizard_id, $config );
+do_action( 'arraypress_after_render_onboarding_{wizard_id}', $config );
+
+// When the wizard is completed
+do_action( 'arraypress_onboarding_completed', $wizard_id, $config );
+do_action( 'arraypress_onboarding_completed_{wizard_id}', $config );
+
+// Custom step type rendering
 do_action( 'arraypress_onboarding_render_step_{type}', $step, $config );
-add_filter( 'arraypress_onboarding_preset_{name}', fn() => [] );
+```
+
+### Filters
+
+```php
+// Register custom option presets
+add_filter( 'arraypress_onboarding_preset_{name}', fn() => [ 'key' => 'Label' ] );
+```
+
+## Helper Functions
+
+```php
+// Register a wizard
+register_onboarding( string $id, array $config ): void;
+
+// Set activation redirect (call from register_activation_hook)
+register_onboarding_redirect( string $id ): void;
+```
+
+## Manager Methods
+
+```php
+// Check if a wizard is registered
+Manager::has_wizard( string $id ): bool;
+
+// Get a wizard's configuration
+Manager::get_wizard( string $id ): ?array;
+
+// Check completion status
+Manager::is_completed( string $id ): bool;
+
+// Reset completion (allows wizard to run again)
+Manager::reset( string $id ): bool;
+
+// Remove a wizard
+Manager::unregister( string $id ): bool;
+
+// Get all registered wizards
+Manager::get_all_wizards(): array;
+
+// Set activation redirect transient
+Manager::set_redirect( string $id ): void;
 ```
 
 ## Requirements

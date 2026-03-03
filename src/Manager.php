@@ -108,35 +108,35 @@ class Manager {
 
         $defaults = [
             // Menu registration
-                'page_title'  => '',
-                'menu_title'  => '',
-                'menu_slug'   => '',
-                'parent_slug' => '',
-                'capability'  => 'manage_options',
+                'page_title'       => '',
+                'menu_title'       => '',
+                'menu_slug'        => '',
+                'parent_slug'      => '',
+                'capability'       => 'manage_options',
 
             // Header
-                'logo'         => '',
-                'header_title' => '',
+                'logo'             => '',
+                'header_title'     => '',
 
             // Behavior
                 'redirect'         => false,
                 'completed_option' => '',
 
             // Custom value callbacks (flat — replaces default get_option/update_option)
-                'get_callback'    => null,
-                'update_callback' => null,
+                'get_callback'     => null,
+                'update_callback'  => null,
 
             // Steps
-                'steps' => [],
+                'steps'            => [],
 
             // Display
-                'body_class' => '',
+                'body_class'       => '',
 
             // Colors
-                'colors' => [],
+                'colors'           => [],
 
             // Labels
-                'labels' => [],
+                'labels'           => [],
         ];
 
         $config = wp_parse_args( $config, $defaults );
