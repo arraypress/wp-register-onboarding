@@ -298,12 +298,21 @@
      * ========================================================================= */
 
     if (typeof onboardingWizard !== 'undefined' && onboardingWizard.syncStep) {
-        $(document).on('inline-sync:complete', function () {
+        $(document).on('inline-sync:complete', function (e, syncId, totals) {
             const nextBtn = form.querySelector('.onboarding-btn--next');
 
             if (nextBtn) {
                 nextBtn.disabled = false;
                 nextBtn.classList.add('onboarding-btn--sync-ready');
+            }
+
+            // Hide the sync button on success (no failed items)
+            if (!totals || !totals.failed) {
+                const syncBtn = form.querySelector('.inline-sync-trigger');
+
+                if (syncBtn) {
+                    syncBtn.style.display = 'none';
+                }
             }
         });
     }
