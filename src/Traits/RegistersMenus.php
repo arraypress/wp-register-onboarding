@@ -3,6 +3,8 @@
  * Registers Menus Trait
  *
  * Handles WordPress admin menu page registration for onboarding wizards.
+ * Captures the hook suffix returned by add_submenu_page() and stores
+ * it on the wizard config for use by the sync step registration.
  *
  * @package     ArrayPress\RegisterOnboarding
  * @copyright   Copyright (c) 2025, ArrayPress Limited
@@ -19,6 +21,10 @@ trait RegistersMenus {
 	/**
 	 * Register admin menu pages for all wizards
 	 *
+	 * After all menus are registered (giving us real hook suffixes),
+	 * triggers sync step registration so the inline-sync library
+	 * can hook admin_enqueue_scripts before it fires.
+	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
@@ -26,13 +32,17 @@ trait RegistersMenus {
 		foreach ( self::$wizards as $id => $config ) {
 			self::register_menu( $id, $config );
 		}
+
+		// Now that we have real hook suffixes, register any sync steps
+		self::register_sync_steps();
 	}
 
 	/**
 	 * Register a single admin menu page
 	 *
-	 * When parent_slug is empty, the wizard is registered as a hidden
-	 * page that doesn't appear in the admin sidebar.
+	 * Captures the hook suffix from add_submenu_page() and stores
+	 * it on the wizard config for later use (sync step registration,
+	 * asset enqueuing, etc).
 	 *
 	 * @param string $id     Wizard identifier.
 	 * @param array  $config Wizard configuration.
@@ -45,7 +55,7 @@ trait RegistersMenus {
 			self::render_page( $id );
 		};
 
-		add_submenu_page(
+		$hook_suffix = add_submenu_page(
 			$config['parent_slug'] ?: null,
 			$config['page_title'],
 			$config['menu_title'],
@@ -53,6 +63,11 @@ trait RegistersMenus {
 			$config['menu_slug'],
 			$render_callback
 		);
+
+		// Store the real hook suffix on the wizard config
+		if ( $hook_suffix ) {
+			self::$wizards[ $id ]['hook_suffix'] = $hook_suffix;
+		}
 	}
 
 }
