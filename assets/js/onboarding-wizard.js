@@ -298,6 +298,15 @@
      * ========================================================================= */
 
     if (typeof onboardingWizard !== 'undefined' && onboardingWizard.syncStep) {
+        const syncBtn = form.querySelector('.inline-sync-trigger');
+
+        // Hide the button when sync starts
+        if (syncBtn) {
+            syncBtn.addEventListener('click', function () {
+                syncBtn.style.display = 'none';
+            });
+        }
+
         $(document).on('inline-sync:complete', function (e, syncId, totals) {
             const nextBtn = form.querySelector('.onboarding-btn--next');
 
@@ -306,13 +315,16 @@
                 nextBtn.classList.add('onboarding-btn--sync-ready');
             }
 
-            // Hide the sync button on success (no failed items)
-            if (!totals || !totals.failed) {
-                const syncBtn = form.querySelector('.inline-sync-trigger');
+            // Show the button again only if there were failures (for retry)
+            if (syncBtn && totals && totals.failed) {
+                syncBtn.style.display = '';
+            }
+        });
 
-                if (syncBtn) {
-                    syncBtn.style.display = 'none';
-                }
+        // Show the button again if sync is cancelled
+        $(document).on('inline-sync:cancelled inline-sync:error', function () {
+            if (syncBtn) {
+                syncBtn.style.display = '';
             }
         });
     }
