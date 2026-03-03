@@ -227,80 +227,21 @@ trait RendersSteps {
 	}
 
 	/**
-	 * Register sync operations for all wizards
-	 *
-	 * Called immediately after admin_menu registration (from register_menus)
-	 * so the inline-sync library can hook admin_enqueue_scripts before it
-	 * fires. Uses the real hook_suffix captured from add_submenu_page()
-	 * rather than guessing the format.
-	 *
-	 * Only registers syncs for the wizard currently being viewed
-	 * (matched by ?page= parameter).
-	 *
-	 * @return void
-	 * @since 1.0.0
-	 */
-	public static function register_sync_steps(): void {
-		if ( ! function_exists( 'register_sync' ) ) {
-			return;
-		}
-
-		$page = $_GET['page'] ?? '';
-
-		if ( empty( $page ) ) {
-			return;
-		}
-
-		foreach ( self::$wizards as $wizard_id => $config ) {
-			if ( ( $config['menu_slug'] ?? '' ) !== $page ) {
-				continue;
-			}
-
-			// Use the real hook suffix captured during menu registration
-			$hook_suffix = $config['hook_suffix'] ?? '';
-
-			if ( empty( $hook_suffix ) ) {
-				continue;
-			}
-
-			foreach ( $config['steps'] as $step_key => $step ) {
-				if ( ( $step['type'] ?? '' ) !== 'sync' ) {
-					continue;
-				}
-
-				$sync_config = $step['sync'] ?? [];
-
-				if ( empty( $sync_config['data_callback'] ) || empty( $sync_config['process_callback'] ) ) {
-					continue;
-				}
-
-				$sync_id = sanitize_key( $wizard_id . '_' . $step_key );
-
-				register_sync( $sync_id, [
-					'hook_suffix'        => $hook_suffix,
-					'capability'         => $config['capability'],
-					'title'              => $sync_config['title'] ?? $step['title'] ?? '',
-					'button_label'       => $sync_config['button_label'] ?? __( 'Start Sync', 'arraypress' ),
-					'button_class'       => 'button button-primary',
-					'container'          => '.onboarding-sync-container',
-					'reload_on_complete' => false,
-					'data_callback'      => $sync_config['data_callback'],
-					'process_callback'   => $sync_config['process_callback'],
-					'name_callback'      => $sync_config['name_callback'] ?? null,
-				] );
-			}
-
-			break; // Only one wizard matches
-		}
-	}
-
-	/**
 	 * Render a sync step
 	 *
-	 * Outputs the sync container and trigger button. The actual sync
-	 * operation was already registered during admin_init via
-	 * register_sync_steps(), ensuring the inline-sync library's assets
-	 * are enqueued at the correct time.
+	 * Outputs the container and trigger button for an externally-registered
+	 * sync operation. The consuming plugin is responsible for calling
+	 * register_sync() with the correct ID, callbacks, and hook_suffix
+	 * during its own bootstrap (typically on init). The onboarding library
+	 * only provides the UI wrapper.
+	 *
+	 * Step config example:
+	 *
+	 *     'import' => [
+	 *         'title'   => 'Import Products',
+	 *         'type'    => 'sync',
+	 *         'sync_id' => 'my_plugin_import_products',
+	 *     ],
 	 *
 	 * Requires the arraypress/wp-inline-sync package.
 	 *
@@ -311,14 +252,11 @@ trait RendersSteps {
 	 * @since 1.0.0
 	 */
 	private static function render_sync_step( array $step, array $config ): void {
-		$sync_config = $step['sync'] ?? [];
+		$sync_id = $step['sync_id'] ?? '';
 
-		if ( empty( $sync_config['data_callback'] ) || empty( $sync_config['process_callback'] ) ) {
+		if ( empty( $sync_id ) ) {
 			return;
 		}
-
-		// Build the same sync ID used during registration
-		$sync_id = sanitize_key( self::$current_wizard . '_' . ( $step['_key'] ?? 'sync' ) );
 
 		?>
 		<div class="onboarding-sync">

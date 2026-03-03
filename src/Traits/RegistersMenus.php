@@ -21,10 +21,6 @@ trait RegistersMenus {
 	/**
 	 * Register admin menu pages for all wizards
 	 *
-	 * After all menus are registered (giving us real hook suffixes),
-	 * triggers sync step registration so the inline-sync library
-	 * can hook admin_enqueue_scripts before it fires.
-	 *
 	 * @return void
 	 * @since 1.0.0
 	 */
@@ -32,17 +28,13 @@ trait RegistersMenus {
 		foreach ( self::$wizards as $id => $config ) {
 			self::register_menu( $id, $config );
 		}
-
-		// Now that we have real hook suffixes, register any sync steps
-		self::register_sync_steps();
 	}
 
 	/**
 	 * Register a single admin menu page
 	 *
-	 * Captures the hook suffix from add_submenu_page() and stores
-	 * it on the wizard config for later use (sync step registration,
-	 * asset enqueuing, etc).
+	 * When parent_slug is empty, the wizard is registered as a hidden
+	 * page that doesn't appear in the admin sidebar.
 	 *
 	 * @param string $id     Wizard identifier.
 	 * @param array  $config Wizard configuration.
@@ -55,7 +47,7 @@ trait RegistersMenus {
 			self::render_page( $id );
 		};
 
-		$hook_suffix = add_submenu_page(
+		add_submenu_page(
 			$config['parent_slug'] ?: null,
 			$config['page_title'],
 			$config['menu_title'],
@@ -63,11 +55,53 @@ trait RegistersMenus {
 			$config['menu_slug'],
 			$render_callback
 		);
+	}
 
-		// Store the real hook suffix on the wizard config
-		if ( $hook_suffix ) {
-			self::$wizards[ $id ]['hook_suffix'] = $hook_suffix;
+	/**
+	 * Fix parent menu highlight for wizard pages
+	 *
+	 * When a wizard has a parent_slug, WordPress loses the menu
+	 * highlight after step navigation changes the URL to admin.php.
+	 * This ensures the correct parent menu stays highlighted.
+	 *
+	 * @param string $parent_file The parent file.
+	 *
+	 * @return string
+	 * @since 1.0.0
+	 */
+	public static function fix_parent_menu_highlight( string $parent_file ): string {
+		global $plugin_page;
+
+		foreach ( self::$wizards as $config ) {
+			if ( ! empty( $config['parent_slug'] ) && $plugin_page === $config['menu_slug'] ) {
+				return $config['parent_slug'];
+			}
 		}
+
+		return $parent_file;
+	}
+
+	/**
+	 * Fix submenu highlight for wizard pages
+	 *
+	 * Ensures the correct submenu item stays highlighted when
+	 * navigating between wizard steps.
+	 *
+	 * @param string|null $submenu_file The submenu file.
+	 *
+	 * @return string|null
+	 * @since 1.0.0
+	 */
+	public static function fix_submenu_highlight( ?string $submenu_file ): ?string {
+		global $plugin_page;
+
+		foreach ( self::$wizards as $config ) {
+			if ( ! empty( $config['parent_slug'] ) && $plugin_page === $config['menu_slug'] ) {
+				return $config['menu_slug'];
+			}
+		}
+
+		return $submenu_file;
 	}
 
 }

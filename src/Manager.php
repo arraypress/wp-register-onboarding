@@ -206,6 +206,10 @@ class Manager {
 		add_filter( 'admin_body_class', [ __CLASS__, 'add_body_class' ] );
 		add_action( 'admin_init', [ __CLASS__, 'process_step_submission' ] );
 		add_action( 'admin_init', [ __CLASS__, 'maybe_redirect' ] );
+
+		// Fix menu highlight when navigating between steps
+		add_filter( 'parent_file', [ __CLASS__, 'fix_parent_menu_highlight' ] );
+		add_filter( 'submenu_file', [ __CLASS__, 'fix_submenu_highlight' ] );
 	}
 
 	/* =========================================================================
@@ -392,7 +396,7 @@ class Manager {
 			'skippable'   => false,
 			'skip_label'  => '',
 			'confetti'    => false,
-			'sync'        => [],
+			'sync_id'     => '',
 			'fields'      => [],
 			'items'       => [],
 			'features'    => [],
