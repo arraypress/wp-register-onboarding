@@ -51,6 +51,12 @@ trait ResolvesOptions {
 			case 'timezones':
 				return self::get_timezone_options();
 
+			case 'pages':
+				return self::get_page_options();
+
+			case 'languages':
+				return self::get_language_options();
+
 			default:
 				/**
 				 * Filter to register custom option presets
@@ -84,6 +90,47 @@ trait ResolvesOptions {
 		}
 
 		return $timezones;
+	}
+
+	/**
+	 * Get published pages as options
+	 *
+	 * @return array page_id => page_title pairs.
+	 * @since 1.0.0
+	 */
+	private static function get_page_options(): array {
+		$pages   = get_pages( [ 'post_status' => 'publish', 'sort_column' => 'post_title' ] );
+		$options = [];
+
+		foreach ( $pages as $page ) {
+			$options[ $page->ID ] = $page->post_title;
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Get available language options
+	 *
+	 * Includes the site's current locale plus all available translations
+	 * from the WordPress.org translation API.
+	 *
+	 * @return array locale => native_name pairs.
+	 * @since 1.0.0
+	 */
+	private static function get_language_options(): array {
+		require_once ABSPATH . 'wp-admin/includes/translation-install.php';
+
+		$options      = [ 'en_US' => 'English (United States)' ];
+		$translations = wp_get_available_translations();
+
+		foreach ( $translations as $locale => $data ) {
+			$options[ $locale ] = $data['native_name'] ?? $locale;
+		}
+
+		asort( $options );
+
+		return $options;
 	}
 
 }

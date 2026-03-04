@@ -55,18 +55,17 @@ trait EnqueuesAssets {
 		self::$assets_enqueued = true;
 
 		// Select2
-		wp_enqueue_style(
+		wp_enqueue_composer_style(
 			'select2',
-			'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css',
-			[],
-			'4.1.0'
+			__FILE__,
+			'css/select2.min.css'
 		);
 
-		wp_enqueue_script(
+		wp_enqueue_composer_script(
 			'select2',
-			'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js',
+			__FILE__,
+			'js/select2.min.js',
 			[ 'jquery' ],
-			'4.1.0',
 			true
 		);
 

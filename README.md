@@ -2,7 +2,7 @@
 
 A declarative system for registering WordPress admin onboarding wizards. Guide users through multi-step plugin setup
 flows with built-in field rendering, validation, auto-saving, Select2 for searchable dropdowns, field dependencies,
-conditional steps, confetti celebrations, and progress tracking.
+conditional steps, sync/import integration, confetti celebrations, and progress tracking.
 
 ## Installation
 
@@ -24,11 +24,13 @@ register_onboarding( 'my-plugin-setup', [
         'welcome' => [
             'title'       => 'Welcome',
             'type'        => 'welcome',
+            'icon'        => 'dashicons-admin-home',
             'description' => 'Let\'s get your plugin set up.',
         ],
         'settings' => [
             'title'  => 'Settings',
             'type'   => 'fields',
+            'icon'   => 'dashicons-admin-settings',
             'fields' => [
                 'currency' => [
                     'type'    => 'select',
@@ -42,6 +44,7 @@ register_onboarding( 'my-plugin-setup', [
         'done' => [
             'title'    => 'All Done!',
             'type'     => 'complete',
+            'icon'     => 'dashicons-flag',
             'confetti' => true,
         ],
     ],
@@ -64,7 +67,8 @@ register_onboarding( 'wizard-id', [
     'header_title' => '',                // Text header (used when no logo)
 
     // Behavior
-    'redirect' => true,                  // Auto-redirect to wizard on plugin activation
+    'redirect'           => true,        // Auto-redirect to wizard on plugin activation
+    'completed_redirect' => '',          // URL to redirect to after wizard completion
 
     // Value Callbacks (optional — defaults to get_option/update_option)
     'get_callback'    => function( string $key, $default ) { ... },
@@ -113,6 +117,7 @@ An introductory step with an optional image and feature highlights.
 'welcome' => [
     'title'       => 'Welcome to MyPlugin',
     'type'        => 'welcome',
+    'icon'        => 'dashicons-admin-home',
     'description' => 'We\'ll have you set up in under 2 minutes.',
     'image'       => plugin_dir_url( __FILE__ ) . 'assets/welcome.svg',
     'features'    => [
@@ -219,6 +224,67 @@ A step with toggle items for enabling/disabling features.
 ],
 ```
 
+### Sync
+
+A step that integrates with `arraypress/wp-inline-sync` for batch import/sync operations with a progress bar.
+The sync must be registered externally via `register_sync()` on the `init` hook — the onboarding library
+only renders the UI wrapper and references the sync by its ID.
+
+**Step 1: Register the sync early (on `init`)**
+
+```php
+add_action( 'init', function () {
+    register_sync( 'my_import_products', [
+        'hook_suffix'        => 'settings_page_my-setup',
+        'container'          => '.onboarding-sync-container',
+        'reload_on_complete' => false,
+        'data_callback'      => 'my_fetch_products',
+        'process_callback'   => 'my_process_product',
+        'name_callback'      => fn( $item ) => $item->name ?? $item->id,
+    ] );
+} );
+```
+
+**Step 2: Reference the sync in the wizard step**
+
+```php
+'import' => [
+    'title'       => 'Import Products',
+    'type'        => 'sync',
+    'icon'        => 'dashicons-download',
+    'description' => 'Pull your existing products from Stripe.',
+    'skippable'   => true,
+    'skip_label'  => 'Skip Import',
+    'sync_id'     => 'my_import_products',
+],
+```
+
+**Why external registration?** The inline-sync library registers REST API routes during `rest_api_init`
+(inside the `init` hook). If the onboarding library tried to register syncs internally during `admin_menu`
+or `admin_init`, it would be too late — the REST routes would never register. External registration gives
+the consuming plugin full control over timing.
+
+**Hook suffix computation:** WordPress generates hook suffixes based on the parent menu:
+
+| Parent                  | Hook Suffix Formula                  | Example                  |
+|-------------------------|--------------------------------------|--------------------------|
+| Hidden (no parent_slug) | `admin_page_{menu_slug}`             | `admin_page_my-setup`    |
+| `options-general.php`   | `settings_page_{menu_slug}`          | `settings_page_my-setup` |
+| `tools.php`             | `tools_page_{menu_slug}`             | `tools_page_my-setup`    |
+| Custom top-level        | `{parent_basename}_page_{menu_slug}` | `toplevel_page_my-setup` |
+
+**Sync step behavior:**
+
+- The Continue button starts disabled and is enabled when the sync completes
+- The sync trigger button hides during processing and on successful completion
+- If the sync has failures, the trigger button reappears for retry
+- If the sync is cancelled, the trigger button reappears
+- Skippable sync steps allow users to bypass the import entirely
+
+**Callback format:** See the `arraypress/wp-inline-sync` README for full callback documentation. The
+`data_callback` must return `items`, `has_more`, `cursor`, and `total`. The `process_callback` must
+return `'created'`, `'updated'`, `'skipped'`, or `WP_Error`.
+
 ### Complete
 
 A success step with action links and an optional confetti celebration.
@@ -227,6 +293,7 @@ A success step with action links and an optional confetti celebration.
 'done' => [
     'title'       => 'You\'re All Set!',
     'type'        => 'complete',
+    'icon'        => 'dashicons-flag',
     'description' => 'Your plugin is configured and ready to go.',
     'confetti'    => true,
     'links'       => [
@@ -263,17 +330,81 @@ or a `WP_Error`. The `save` callback receives the submitted `$_POST` data.
 
 These options are available on all step types:
 
-| Key           | Type       | Description                                                         |
-|---------------|------------|---------------------------------------------------------------------|
-| `title`       | `string`   | Step title displayed in the header and progress bar                 |
-| `description` | `string`   | Description text below the title                                    |
-| `type`        | `string`   | Step type: `welcome`, `fields`, `checklist`, `complete`, `callback` |
-| `show_if`     | `callable` | PHP callback — return `false` to skip this step entirely            |
-| `skippable`   | `bool`     | Show a skip button (default: `false`)                               |
-| `skip_label`  | `string`   | Custom skip button text                                             |
-| `confetti`    | `bool`     | Trigger confetti animation on this step (default: `false`)          |
-| `validate`    | `callable` | Step-level validation callback                                      |
-| `save`        | `callable` | Step-level custom save callback                                     |
+| Key             | Type       | Description                                                                 |
+|-----------------|------------|-----------------------------------------------------------------------------|
+| `title`         | `string`   | Step title displayed in the header and progress bar                         |
+| `description`   | `string`   | Description text below the title                                            |
+| `type`          | `string`   | Step type: `welcome`, `fields`, `checklist`, `sync`, `complete`, `callback` |
+| `icon`          | `string`   | Dashicon class for the progress bar (e.g. `dashicons-cart`)                 |
+| `show_if`       | `callable` | PHP callback — return `false` to skip this step entirely                    |
+| `before_render` | `callable` | PHP callback — runs before the step content renders                         |
+| `skippable`     | `bool`     | Show a skip button (default: `false`)                                       |
+| `skip_label`    | `string`   | Custom skip button text                                                     |
+| `confetti`      | `bool`     | Trigger confetti animation on this step (default: `false`)                  |
+| `validate`      | `callable` | Step-level validation callback                                              |
+| `save`          | `callable` | Step-level custom save callback                                             |
+
+## Step Icons
+
+Each step can display a dashicon in the progress bar instead of its step number. When a step is completed,
+the icon is replaced with a green checkmark regardless of whether an icon was set.
+
+```php
+'steps' => [
+    'welcome'  => [ 'title' => 'Welcome',   'icon' => 'dashicons-admin-home',     ... ],
+    'settings' => [ 'title' => 'Settings',  'icon' => 'dashicons-admin-settings', ... ],
+    'import'   => [ 'title' => 'Import',    'icon' => 'dashicons-download',       ... ],
+    'features' => [ 'title' => 'Features',  'icon' => 'dashicons-yes',            ... ],
+    'done'     => [ 'title' => 'Complete',  'icon' => 'dashicons-flag',           ... ],
+],
+```
+
+Icons are optional — steps without an `icon` key show their step number as before. You can mix icons
+and numbers across steps.
+
+## Before Render Callback
+
+The `before_render` callback runs just before a step's content is rendered. Use it for side effects
+like checking API connectivity, preloading data, or displaying notices.
+
+```php
+'api_setup' => [
+    'title'         => 'API Connection',
+    'type'          => 'fields',
+    'before_render' => function( $step ) {
+        // Check if the API key from a previous step is valid
+        $key = get_option( 'my_stripe_key' );
+        if ( $key && ! validate_stripe_key( $key ) ) {
+            echo '<div class="notice notice-warning"><p>Your Stripe key appears invalid.</p></div>';
+        }
+    },
+    'fields' => [ ... ],
+],
+```
+
+The callback receives the step configuration array. It runs after errors are displayed but before the
+step content, so any output appears between the error block and the step body.
+
+## Completion Redirect
+
+To auto-redirect after the wizard finishes instead of showing a complete step with links:
+
+```php
+register_onboarding( 'my-plugin-setup', [
+    'completed_redirect' => admin_url( 'edit.php?post_type=product' ),
+    'steps' => [
+        // ... your steps ...
+        'done' => [
+            'title' => 'Finishing Up',
+            'type'  => 'complete',
+        ],
+    ],
+] );
+```
+
+When the user clicks "Finish Setup" on the last step before the complete step, the wizard saves
+completion status and redirects to the configured URL. If both `completed_redirect` and a step-level
+`redirect` are set, the step-level redirect takes priority.
 
 ## Conditional Steps
 
@@ -538,6 +669,13 @@ The option key is auto-generated from the wizard ID (e.g. `my_plugin_setup_compl
 \ArrayPress\RegisterOnboarding\Manager::reset( 'my-plugin-setup' );
 ```
 
+## Menu Highlight
+
+When the wizard is registered under a parent menu (e.g. `'parent_slug' => 'options-general.php'`),
+the library automatically fixes WordPress sidebar highlighting as users navigate between steps. Without
+this fix, the sidebar highlight would break because step navigation changes the URL from the original
+menu page URL. This is handled internally — no configuration needed.
+
 ## Colors
 
 Override the wizard's color scheme via CSS custom properties:
@@ -633,11 +771,12 @@ Manager::set_redirect( string $id ): void;
 
 ## Requirements
 
-- PHP 7.4+
-- WordPress 5.0+
+- PHP 8.1+
+- WordPress 6.0+
 - arraypress/wp-composer-assets
 - arraypress/wp-currencies
 - arraypress/wp-countries
+- arraypress/wp-inline-sync (optional, for sync steps)
 
 ## License
 

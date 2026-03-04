@@ -73,6 +73,13 @@ trait RendersPage {
 
 						<?php self::render_step_errors(); ?>
 
+						<?php
+						// Run before_render callback if provided
+						if ( ! empty( $current_step['before_render'] ) && is_callable( $current_step['before_render'] ) ) {
+							call_user_func( $current_step['before_render'], $current_step );
+						}
+						?>
+
 						<div class="onboarding-step-content">
 							<?php self::render_step_content( $current_step, $config ); ?>
 						</div>
@@ -149,6 +156,8 @@ trait RendersPage {
 						<div class="onboarding-progress__dot">
 							<?php if ( $state === 'completed' ) : ?>
 								<span class="dashicons dashicons-yes-alt"></span>
+							<?php elseif ( ! empty( $step['icon'] ) ) : ?>
+								<span class="dashicons <?php echo esc_attr( $step['icon'] ); ?>"></span>
 							<?php else : ?>
 								<span class="onboarding-progress__number"><?php echo esc_html( $index + 1 ); ?></span>
 							<?php endif; ?>

@@ -120,8 +120,14 @@ trait ProcessesSteps {
 			do_action( 'arraypress_onboarding_completed', $wizard_id, $config );
 			do_action( "arraypress_onboarding_completed_{$wizard_id}", $config );
 
+			// Step-level redirect takes priority, then wizard-level completed_redirect
 			if ( ! empty( $step['redirect'] ) ) {
 				wp_safe_redirect( $step['redirect'] );
+				exit;
+			}
+
+			if ( ! empty( $config['completed_redirect'] ) ) {
+				wp_safe_redirect( $config['completed_redirect'] );
 				exit;
 			}
 		}
