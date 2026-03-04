@@ -669,7 +669,7 @@
     font-size: 14px;
     width: 14px;
     height: 14px;
-    line-height: 14px;
+    line-height: 35px !important;
 }
 
 /* ==========================================================================
@@ -918,6 +918,7 @@
     height: 16px;
     vertical-align: text-bottom;
     margin-right: 4px;
+    line-height: 16px !important;
 }
 
 .onboarding-sync__missing {
