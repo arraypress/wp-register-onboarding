@@ -446,6 +446,7 @@
 .onboarding-input,
 .onboarding-select,
 .onboarding-textarea {
+    display: block;
     width: 100%;
     padding: 10px 14px;
     border: 1px solid var(--ob-border);
@@ -456,6 +457,9 @@
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
     box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
 }
 
 .onboarding-input:focus,
@@ -1047,8 +1051,12 @@
 }
 
 @keyframes onboarding-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 113, 177, 0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(34, 113, 177, 0); }
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34, 113, 177, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(34, 113, 177, 0);
+    }
 }
 
 /* Disabled continue button on sync steps */

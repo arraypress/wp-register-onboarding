@@ -299,6 +299,36 @@
 
     if (typeof onboardingWizard !== 'undefined' && onboardingWizard.syncStep) {
         const syncBtn = form.querySelector('.inline-sync-trigger');
+        const nextBtn = form.querySelector('.onboarding-btn--next');
+        const skipBtn = form.querySelector('.onboarding-btn--skip');
+        const storageKey = 'onboarding_sync_complete_' + (form.querySelector('[name="onboarding_step"]')?.value || '');
+
+        /**
+         * Apply the "sync completed" UI state.
+         *
+         * Enables Continue, hides the sync trigger button, hides Skip.
+         * Called both on the inline-sync:complete event and on page load
+         * when sessionStorage indicates a previous completion.
+         */
+        const applySyncCompleteState = () => {
+            if (nextBtn) {
+                nextBtn.disabled = false;
+                nextBtn.classList.add('onboarding-btn--sync-ready');
+            }
+
+            if (syncBtn) {
+                syncBtn.style.display = 'none';
+            }
+
+            if (skipBtn) {
+                skipBtn.style.display = 'none';
+            }
+        };
+
+        // Restore state if sync already completed before a page reload
+        if (sessionStorage.getItem(storageKey) === '1') {
+            applySyncCompleteState();
+        }
 
         // Hide the button when sync starts
         if (syncBtn) {
@@ -308,33 +338,33 @@
         }
 
         $(document).on('inline-sync:complete', function (e, syncId, totals) {
-            const nextBtn = form.querySelector('.onboarding-btn--next');
-
-            if (nextBtn) {
-                nextBtn.disabled = false;
-                nextBtn.classList.add('onboarding-btn--sync-ready');
-            }
-
-            // Show the button again only if there were failures (for retry)
-            if (syncBtn && totals && totals.failed) {
-                syncBtn.style.display = '';
-            }
-
-            // Hide skip button on successful sync (import is done, skip makes no sense)
-            if (!totals || !totals.failed) {
-                const skipBtn = form.querySelector('.onboarding-btn--skip');
-
-                if (skipBtn) {
-                    skipBtn.style.display = 'none';
+            if (totals && totals.failed) {
+                // Failures: show retry button, keep skip visible, don't persist
+                if (syncBtn) {
+                    syncBtn.style.display = '';
                 }
+
+                if (nextBtn) {
+                    nextBtn.disabled = false;
+                    nextBtn.classList.add('onboarding-btn--sync-ready');
+                }
+            } else {
+                // Success: persist state so it survives page reload
+                sessionStorage.setItem(storageKey, '1');
+                applySyncCompleteState();
             }
         });
 
-        // Show the button again if sync is cancelled
+        // Show the button again if sync is cancelled or errors
         $(document).on('inline-sync:cancelled inline-sync:error', function () {
             if (syncBtn) {
                 syncBtn.style.display = '';
             }
+        });
+
+        // Clean up sessionStorage when navigating away from the sync step
+        form.addEventListener('submit', function () {
+            sessionStorage.removeItem(storageKey);
         });
     }
 
