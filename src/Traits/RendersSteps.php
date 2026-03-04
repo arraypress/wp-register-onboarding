@@ -2,7 +2,7 @@
 /**
  * Renders Steps Trait
  *
- * Handles rendering of individual step types: welcome, fields,
+ * Handles rendering of individual step types: welcome, info, fields,
  * checklist, complete, callback, and sync.
  *
  * @package     ArrayPress\RegisterOnboarding
@@ -30,6 +30,10 @@ trait RendersSteps {
 		switch ( $step['type'] ) {
 			case 'welcome':
 				self::render_welcome_step( $step );
+				break;
+
+			case 'info':
+				self::render_info_step( $step );
 				break;
 
 			case 'fields':
@@ -90,6 +94,57 @@ trait RendersSteps {
 								<?php endif; ?>
 								<?php if ( ! empty( $feature['description'] ) ) : ?>
 									<span><?php echo esc_html( $feature['description'] ); ?></span>
+								<?php endif; ?>
+							</div>
+						</div>
+					<?php endforeach; ?>
+				</div>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render an info step
+	 *
+	 * Educational/informational step with optional image, HTML content,
+	 * and structured sections. No form fields — read-only content.
+	 *
+	 * @param array $step Step configuration.
+	 *
+	 * @return void
+	 * @since 1.0.0
+	 */
+	private static function render_info_step( array $step ): void {
+		?>
+		<div class="onboarding-info">
+			<?php if ( ! empty( $step['image'] ) ) : ?>
+				<div class="onboarding-info__image">
+					<img src="<?php echo esc_url( $step['image'] ); ?>" alt="">
+				</div>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $step['content'] ) ) : ?>
+				<div class="onboarding-info__content">
+					<?php echo wp_kses_post( $step['content'] ); ?>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $step['sections'] ) ) : ?>
+				<div class="onboarding-info__sections">
+					<?php foreach ( $step['sections'] as $section ) : ?>
+						<div class="onboarding-info__section">
+							<?php if ( ! empty( $section['icon'] ) ) : ?>
+								<div class="onboarding-info__section-icon">
+									<span class="dashicons <?php echo esc_attr( $section['icon'] ); ?>"></span>
+								</div>
+							<?php endif; ?>
+							<div class="onboarding-info__section-text">
+								<?php if ( ! empty( $section['title'] ) ) : ?>
+									<span class="onboarding-info__section-title"><?php echo esc_html( $section['title'] ); ?></span>
+								<?php endif; ?>
+								<?php if ( ! empty( $section['description'] ) ) : ?>
+									<span class="onboarding-info__section-description"><?php echo esc_html( $section['description'] ); ?></span>
 								<?php endif; ?>
 							</div>
 						</div>

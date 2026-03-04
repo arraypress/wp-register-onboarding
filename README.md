@@ -135,6 +135,44 @@ An introductory step with an optional image and feature highlights.
 ],
 ```
 
+### Info
+
+An educational or informational step with optional image, HTML content, and structured sections. No form
+fields — purely read-only content. Use it for "here's what we'll set up" overviews, feature explanations,
+or prerequisite instructions between functional steps.
+
+```php
+'how_it_works' => [
+    'title'       => 'How It Works',
+    'type'        => 'info',
+    'icon'        => 'dashicons-info',
+    'description' => 'Here\'s what we\'ll set up in the next few steps.',
+    'image'       => plugin_dir_url( __FILE__ ) . 'assets/diagram.svg',
+    'content'     => '<p>MyPlugin connects to your payment provider to manage products and process orders.</p>',
+    'sections'    => [
+        [
+            'icon'        => 'dashicons-admin-settings',
+            'title'       => 'Configure Settings',
+            'description' => 'Set your currency, connect Stripe, and choose your checkout page.',
+        ],
+        [
+            'icon'        => 'dashicons-download',
+            'title'       => 'Import Products',
+            'description' => 'Pull existing products or create your first one.',
+        ],
+        [
+            'icon'        => 'dashicons-yes',
+            'title'       => 'Enable Features',
+            'description' => 'Turn on receipts, invoices, and customer accounts.',
+        ],
+    ],
+],
+```
+
+The `content` key accepts HTML (sanitized via `wp_kses_post`). The `sections` array renders structured
+blocks with an icon, title, and description — similar to the welcome step's features but designed for
+explanatory content rather than feature highlights.
+
 ### Fields
 
 A step with form fields that are automatically rendered, validated, and saved.
@@ -330,19 +368,19 @@ or a `WP_Error`. The `save` callback receives the submitted `$_POST` data.
 
 These options are available on all step types:
 
-| Key             | Type       | Description                                                                 |
-|-----------------|------------|-----------------------------------------------------------------------------|
-| `title`         | `string`   | Step title displayed in the header and progress bar                         |
-| `description`   | `string`   | Description text below the title                                            |
-| `type`          | `string`   | Step type: `welcome`, `fields`, `checklist`, `sync`, `complete`, `callback` |
-| `icon`          | `string`   | Dashicon class for the progress bar (e.g. `dashicons-cart`)                 |
-| `show_if`       | `callable` | PHP callback — return `false` to skip this step entirely                    |
-| `before_render` | `callable` | PHP callback — runs before the step content renders                         |
-| `skippable`     | `bool`     | Show a skip button (default: `false`)                                       |
-| `skip_label`    | `string`   | Custom skip button text                                                     |
-| `confetti`      | `bool`     | Trigger confetti animation on this step (default: `false`)                  |
-| `validate`      | `callable` | Step-level validation callback                                              |
-| `save`          | `callable` | Step-level custom save callback                                             |
+| Key             | Type       | Description                                                                         |
+|-----------------|------------|-------------------------------------------------------------------------------------|
+| `title`         | `string`   | Step title displayed in the header and progress bar                                 |
+| `description`   | `string`   | Description text below the title                                                    |
+| `type`          | `string`   | Step type: `welcome`, `info`, `fields`, `checklist`, `sync`, `complete`, `callback` |
+| `icon`          | `string`   | Dashicon class for the progress bar (e.g. `dashicons-cart`)                         |
+| `show_if`       | `callable` | PHP callback — return `false` to skip this step entirely                            |
+| `before_render` | `callable` | PHP callback — runs before the step content renders                                 |
+| `skippable`     | `bool`     | Show a skip button (default: `false`)                                               |
+| `skip_label`    | `string`   | Custom skip button text                                                             |
+| `confetti`      | `bool`     | Trigger confetti animation on this step (default: `false`)                          |
+| `validate`      | `callable` | Step-level validation callback                                                      |
+| `save`          | `callable` | Step-level custom save callback                                                     |
 
 ## Step Icons
 
@@ -384,6 +422,23 @@ like checking API connectivity, preloading data, or displaying notices.
 
 The callback receives the step configuration array. It runs after errors are displayed but before the
 step content, so any output appears between the error block and the step body.
+
+### Notices
+
+The library provides styled notice classes for use in `before_render` callbacks. These render correctly
+within the wizard context (unlike WordPress's `.notice` classes which assume the standard admin layout).
+
+```php
+'before_render' => function( $step ) {
+    echo '<div class="onboarding-notice onboarding-notice--info"><p>This is an info notice.</p></div>';
+    echo '<div class="onboarding-notice onboarding-notice--success"><p>This is a success notice.</p></div>';
+    echo '<div class="onboarding-notice onboarding-notice--warning"><p>This is a warning notice.</p></div>';
+    echo '<div class="onboarding-notice onboarding-notice--error"><p>This is an error notice.</p></div>';
+},
+```
+
+Available variants: `--info` (accent blue), `--success` (green), `--warning` (amber), `--error` (red).
+Without a variant, the notice uses the default accent color.
 
 ## Completion Redirect
 
@@ -592,11 +647,38 @@ than a standalone `wp_options` key. The library calls `get_callback` when pre-po
 
 String shorthand for common select options:
 
-| Preset       | Source                          | Count |
-|--------------|---------------------------------|-------|
-| `currencies` | `arraypress/wp-currencies`      | 136   |
-| `countries`  | `arraypress/wp-countries`       | 249   |
-| `timezones`  | PHP `timezone_identifiers_list` | ~400  |
+| Preset                | Source                          | Count  |
+|-----------------------|---------------------------------|--------|
+| `currencies`          | `arraypress/wp-currencies`      | 136    |
+| `countries`           | `arraypress/wp-countries`       | 249    |
+| `timezones`           | PHP `timezone_identifiers_list` | ~400   |
+| `pages`               | Published WordPress pages       | varies |
+| `languages`           | `wp_get_available_translations` | ~200   |
+| `users`               | All WordPress users             | varies |
+| `users:{role}`        | Users filtered by role          | varies |
+| `taxonomy:{taxonomy}` | Terms from any taxonomy         | varies |
+
+**Parameterized presets** use a colon separator to pass arguments:
+
+```php
+// All users
+'options' => 'users',
+
+// Only administrators
+'options' => 'users:administrator',
+
+// Only editors
+'options' => 'users:editor',
+
+// Categories
+'options' => 'taxonomy:category',
+
+// Tags
+'options' => 'taxonomy:post_tag',
+
+// Custom taxonomy
+'options' => 'taxonomy:product_cat',
+```
 
 Custom presets via filter:
 
@@ -742,6 +824,21 @@ register_onboarding( string $id, array $config ): void;
 
 // Set activation redirect (call from register_activation_hook)
 register_onboarding_redirect( string $id ): void;
+
+// Get a wizard's configuration
+get_onboarding_wizard( string $id ): ?array;
+
+// Check if a wizard has been completed
+is_onboarding_completed( string $id ): bool;
+
+// Reset a wizard (allows it to run again)
+reset_onboarding( string $id ): bool;
+
+// Check if a wizard is registered
+has_onboarding_wizard( string $id ): bool;
+
+// Remove a wizard
+unregister_onboarding( string $id ): bool;
 ```
 
 ## Manager Methods

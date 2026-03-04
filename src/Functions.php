@@ -80,3 +80,80 @@ if ( ! function_exists( 'register_onboarding_redirect' ) ) {
 		Manager::set_redirect( $id );
 	}
 }
+
+if ( ! function_exists( 'get_onboarding_wizard' ) ) {
+	/**
+	 * Get a registered wizard's configuration
+	 *
+	 * @param string $id Wizard identifier.
+	 *
+	 * @return array|null Wizard configuration or null if not registered.
+	 * @since 1.0.0
+	 */
+	function get_onboarding_wizard( string $id ): ?array {
+		return Manager::get_wizard( $id );
+	}
+}
+
+if ( ! function_exists( 'is_onboarding_completed' ) ) {
+	/**
+	 * Check if an onboarding wizard has been completed
+	 *
+	 * @param string $id Wizard identifier.
+	 *
+	 * @return bool True if the wizard has been completed.
+	 * @since 1.0.0
+	 *
+	 * @example
+	 * if ( ! is_onboarding_completed( 'my-plugin-setup' ) ) {
+	 *     add_action( 'admin_notices', 'show_setup_reminder' );
+	 * }
+	 */
+	function is_onboarding_completed( string $id ): bool {
+		return Manager::is_completed( $id );
+	}
+}
+
+if ( ! function_exists( 'reset_onboarding' ) ) {
+	/**
+	 * Reset an onboarding wizard's completion status
+	 *
+	 * Allows the wizard to run again by removing its completion flag.
+	 *
+	 * @param string $id Wizard identifier.
+	 *
+	 * @return bool True if reset was successful.
+	 * @since 1.0.0
+	 */
+	function reset_onboarding( string $id ): bool {
+		return Manager::reset( $id );
+	}
+}
+
+if ( ! function_exists( 'has_onboarding_wizard' ) ) {
+	/**
+	 * Check if an onboarding wizard is registered
+	 *
+	 * @param string $id Wizard identifier.
+	 *
+	 * @return bool True if the wizard is registered.
+	 * @since 1.0.0
+	 */
+	function has_onboarding_wizard( string $id ): bool {
+		return Manager::has_wizard( $id );
+	}
+}
+
+if ( ! function_exists( 'unregister_onboarding' ) ) {
+	/**
+	 * Unregister an onboarding wizard
+	 *
+	 * @param string $id Wizard identifier.
+	 *
+	 * @return bool True if the wizard was unregistered.
+	 * @since 1.0.0
+	 */
+	function unregister_onboarding( string $id ): bool {
+		return Manager::unregister( $id );
+	}
+}

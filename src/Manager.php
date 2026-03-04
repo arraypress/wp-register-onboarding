@@ -8,7 +8,7 @@
  *
  * - Automatic menu page registration (hidden or visible)
  * - Step-based navigation with progress indicator
- * - Built-in step types: welcome, fields, checklist, complete, callback, sync
+ * - Built-in step types: welcome, info, fields, checklist, complete, callback, sync
  * - Field rendering with automatic saving via wp_options or custom callbacks
  * - Per-field and per-step validation with error display
  * - Select2 for searchable selects (countries, currencies, etc.)
@@ -116,15 +116,15 @@ class Manager {
 
 		$defaults = [
 			// Menu registration
-			'page_title'         => '',
-			'menu_title'         => '',
-			'menu_slug'          => '',
-			'parent_slug'        => '',
-			'capability'         => 'manage_options',
+			'page_title'  => '',
+			'menu_title'  => '',
+			'menu_slug'   => '',
+			'parent_slug' => '',
+			'capability'  => 'manage_options',
 
 			// Header
-			'logo'               => '',
-			'header_title'       => '',
+			'logo'         => '',
+			'header_title' => '',
 
 			// Behavior
 			'redirect'           => false,
@@ -132,20 +132,20 @@ class Manager {
 			'completed_redirect' => '',
 
 			// Custom value callbacks
-			'get_callback'       => null,
-			'update_callback'    => null,
+			'get_callback'    => null,
+			'update_callback' => null,
 
 			// Steps
-			'steps'              => [],
+			'steps' => [],
 
 			// Display
-			'body_class'         => '',
+			'body_class' => '',
 
 			// Colors
-			'colors'             => [],
+			'colors' => [],
 
 			// Labels
-			'labels'             => [],
+			'labels' => [],
 		];
 
 		$config = wp_parse_args( $config, $defaults );
@@ -400,6 +400,8 @@ class Manager {
 			'skip_label'    => '',
 			'confetti'      => false,
 			'sync_id'       => '',
+			'content'       => '',
+			'sections'      => [],
 			'fields'        => [],
 			'items'         => [],
 			'features'      => [],

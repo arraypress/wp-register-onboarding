@@ -319,6 +319,15 @@
             if (syncBtn && totals && totals.failed) {
                 syncBtn.style.display = '';
             }
+
+            // Hide skip button on successful sync (import is done, skip makes no sense)
+            if (!totals || !totals.failed) {
+                const skipBtn = form.querySelector('.onboarding-btn--skip');
+
+                if (skipBtn) {
+                    skipBtn.style.display = 'none';
+                }
+            }
         });
 
         // Show the button again if sync is cancelled

@@ -24,8 +24,10 @@ trait ResolvesOptions {
 	/**
 	 * Resolve options — handles presets and raw arrays
 	 *
-	 * Supports string presets ('currencies', 'countries', 'timezones')
-	 * and custom presets via the arraypress_onboarding_preset_{name} filter.
+	 * Supports string presets ('currencies', 'countries', 'timezones',
+	 * 'pages', 'languages'), parameterized presets ('users:editor',
+	 * 'taxonomy:category'), and custom presets via the
+	 * arraypress_onboarding_preset_{name} filter.
 	 *
 	 * @param string|array $options Options definition.
 	 *
@@ -39,6 +41,22 @@ trait ResolvesOptions {
 
 		if ( ! is_string( $options ) ) {
 			return [];
+		}
+
+		// Parameterized presets (e.g. 'users:editor', 'taxonomy:category')
+		if ( str_contains( $options, ':' ) ) {
+			[ $preset, $param ] = explode( ':', $options, 2 );
+
+			switch ( $preset ) {
+				case 'users':
+					return self::get_user_options( $param );
+
+				case 'taxonomy':
+					return self::get_taxonomy_options( $param );
+
+				default:
+					return apply_filters( 'arraypress_onboarding_preset_' . $preset, [], $param );
+			}
 		}
 
 		switch ( $options ) {
@@ -56,6 +74,9 @@ trait ResolvesOptions {
 
 			case 'languages':
 				return self::get_language_options();
+
+			case 'users':
+				return self::get_user_options();
 
 			default:
 				/**
@@ -129,6 +150,68 @@ trait ResolvesOptions {
 		}
 
 		asort( $options );
+
+		return $options;
+	}
+
+	/**
+	 * Get users as options
+	 *
+	 * Returns user_id => display_name pairs. Optionally filter by role.
+	 *
+	 * @param string $role Optional role to filter by (e.g. 'administrator', 'editor').
+	 *
+	 * @return array user_id => display_name pairs.
+	 * @since 1.0.0
+	 */
+	private static function get_user_options( string $role = '' ): array {
+		$args = [
+			'orderby' => 'display_name',
+			'order'   => 'ASC',
+			'fields'  => [ 'ID', 'display_name' ],
+		];
+
+		if ( ! empty( $role ) ) {
+			$args['role'] = $role;
+		}
+
+		$users   = get_users( $args );
+		$options = [];
+
+		foreach ( $users as $user ) {
+			$options[ $user->ID ] = $user->display_name;
+		}
+
+		return $options;
+	}
+
+	/**
+	 * Get taxonomy terms as options
+	 *
+	 * Returns term_id => name pairs for a given taxonomy.
+	 *
+	 * @param string $taxonomy Taxonomy name (e.g. 'category', 'post_tag', 'product_cat').
+	 *
+	 * @return array term_id => name pairs.
+	 * @since 1.0.0
+	 */
+	private static function get_taxonomy_options( string $taxonomy ): array {
+		$terms = get_terms( [
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => false,
+			'orderby'    => 'name',
+			'order'      => 'ASC',
+		] );
+
+		if ( is_wp_error( $terms ) ) {
+			return [];
+		}
+
+		$options = [];
+
+		foreach ( $terms as $term ) {
+			$options[ $term->term_id ] = $term->name;
+		}
 
 		return $options;
 	}
