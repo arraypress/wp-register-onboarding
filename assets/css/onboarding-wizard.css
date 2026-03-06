@@ -443,6 +443,10 @@
     color: var(--ob-text-primary);
 }
 
+.onboarding-select {
+    max-width: none !important;
+}
+
 .onboarding-input,
 .onboarding-select,
 .onboarding-textarea {
@@ -788,7 +792,7 @@
     font-size: 14px;
     width: 14px;
     height: 14px;
-    line-height: 14px;
+    line-height: 38px !important;
 }
 
 /* ==========================================================================
@@ -1037,6 +1041,7 @@
     height: 16px;
     vertical-align: text-bottom;
     margin-right: 4px;
+    line-height: 1 !important;
 }
 
 .onboarding-sync__missing {
