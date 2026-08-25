@@ -1,49 +1,66 @@
 {
-  "name": "arraypress/wp-register-onboarding",
-  "version": "1.0.0",
-  "description": "A declarative WordPress onboarding wizard registration system for plugin setup flows",
-  "type": "library",
-  "license": "GPL-2.0-or-later",
-  "homepage": "https://github.com/arraypress/wp-register-onboarding/",
-  "authors": [
-    {
-      "name": "David Sherlock",
-      "homepage": "https://arraypress.com/"
-    }
-  ],
-  "require": {
-    "php": ">=7.4",
-    "arraypress/wp-composer-assets": "dev-main",
-    "arraypress/wp-currencies": "dev-main",
-    "arraypress/wp-countries": "dev-main"
-  },
-  "autoload": {
-    "psr-4": {
-      "ArrayPress\\RegisterOnboarding\\": "src/"
+    "name": "arraypress/wp-register-onboarding",
+    "description": "Declarative multi-step setup wizards for WordPress plugins, with fields rendered by the field kit.",
+    "type": "library",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "David Sherlock",
+            "homepage": "https://arraypress.com/"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "arraypress/wp-composer-assets": "dev-main",
+        "arraypress/wp-field-kit": "dev-main"
     },
-    "files": [
-      "src/Functions.php"
-    ]
-  },
-  "config": {
-    "optimize-autoloader": true,
-    "sort-packages": true,
-    "preferred-install": "dist"
-  },
-  "minimum-stability": "dev",
-  "prefer-stable": true,
-  "support": {
-    "issues": "https://github.com/arraypress/wp-register-onboarding/issues",
-    "source": "https://github.com/arraypress/wp-register-onboarding"
-  },
-  "keywords": [
-    "wordpress",
-    "onboarding",
-    "wizard",
-    "setup",
-    "first-run",
-    "admin-interface",
-    "wp-admin",
-    "plugin-setup"
-  ]
+    "require-dev": {
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "phpunit/phpunit": "^12.0",
+        "squizlabs/php_codesniffer": "^3.13.5",
+        "wp-coding-standards/wpcs": "^3.4"
+    },
+    "suggest": {
+        "arraypress/wp-inline-sync": "Adds the sync step type, for a wizard that imports data as one of its steps."
+    },
+    "autoload": {
+        "psr-4": {
+            "ArrayPress\\RegisterOnboarding\\": "src/"
+        },
+        "files": [
+            "src/Utils/Functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ArrayPress\\RegisterOnboarding\\Tests\\": "tests/"
+        }
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/arraypress/wp-field-kit"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/arraypress/wp-composer-assets"
+        }
+    ],
+    "scripts": {
+        "test": "phpunit",
+        "lint": "phpcs",
+        "format": "phpcbf --standard=phpcs-format.xml.dist",
+        "format:check": "phpcs --standard=phpcs-format.xml.dist",
+        "docs:verify": "php vendor/arraypress/wp-field-kit/bin/verify-docs.php --calls=register_onboarding README.md"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "preferred-install": "dist",
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": false
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

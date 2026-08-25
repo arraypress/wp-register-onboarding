@@ -1,0 +1,254 @@
+/**
+ * Onboarding wizard.
+ *
+ * Deliberately small. The fields are the kit's; the buttons, the error
+ * notice, the icons and the visually-hidden text are core's `.button`,
+ * `.button-primary`, `.button-hero`, `.notice`, `.dashicons` and
+ * `.screen-reader-text`. What is left is the two things core has no component
+ * for: a page that takes over the admin, and a row of steps with one of them
+ * current.
+ *
+ * @package ArrayPress\RegisterOnboarding
+ */
+
+/* ==========================================================================
+   The takeover
+   ========================================================================== */
+
+body.onboarding-wizard #wpcontent,
+body.onboarding-wizard #wpbody-content {
+	padding: 0;
+}
+
+body.onboarding-wizard #wpfooter {
+	display: none;
+}
+
+.onboarding {
+	/*
+	 * The admin colour scheme, not core's default blue. A wizard is usually
+	 * the first screen of a plugin somebody has just installed, and being the
+	 * one screen that ignores their colour scheme is a poor first impression.
+	 * A wizard that wants its own sets `accent`, which lands here inline.
+	 */
+	--onboarding-accent: var( --wp-admin-theme-color, #2271b1 );
+
+	box-sizing: border-box;
+	min-height: 100vh;
+	padding: 40px 20px 60px;
+	background: #f0f0f1;
+}
+
+.onboarding__inner {
+	max-width: 680px;
+	margin: 0 auto;
+}
+
+.onboarding__header {
+	margin-bottom: 24px;
+	text-align: center;
+}
+
+.onboarding__logo {
+	max-height: 44px;
+	width: auto;
+}
+
+/* ==========================================================================
+   Progress
+
+   An ordered list of places, one of which you are at. The markers are drawn
+   with a border rather than a fill so an upcoming step reads as an outline
+   and a finished one as solid — the same distinction the text makes.
+   ========================================================================== */
+
+.onboarding__progress ol {
+	display: flex;
+	gap: 8px;
+	margin: 0 0 20px;
+	padding: 0;
+	list-style: none;
+}
+
+.onboarding__step {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	text-align: center;
+	color: #646970;
+	font-size: 12px;
+}
+
+/* The line to the next step, drawn from this one so the last has none. */
+.onboarding__step:not( :last-child )::after {
+	content: "";
+	position: absolute;
+	top: 15px;
+	left: calc( 50% + 22px );
+	right: calc( -50% + 22px );
+	border-top: 2px solid #dcdcde;
+}
+
+.onboarding__step--done::after {
+	border-color: var( --onboarding-accent );
+}
+
+.onboarding__marker {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	margin: 0 auto 6px;
+	position: relative;
+	border: 2px solid #dcdcde;
+	border-radius: 50%;
+	background: #fff;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.onboarding__step--current .onboarding__marker,
+.onboarding__step--done .onboarding__marker {
+	border-color: var( --onboarding-accent );
+}
+
+.onboarding__step--done .onboarding__marker {
+	background: var( --onboarding-accent );
+	color: #fff;
+}
+
+.onboarding__step--current {
+	color: #1d2327;
+	font-weight: 600;
+}
+
+/* ==========================================================================
+   The card
+   ========================================================================== */
+
+.onboarding__card {
+	padding: 32px;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+	box-shadow: 0 1px 1px rgba( 0, 0, 0, 0.04 );
+}
+
+.onboarding__step-header {
+	margin-bottom: 24px;
+	text-align: center;
+}
+
+.onboarding__step-header h2 {
+	margin: 0 0 4px;
+	text-wrap: balance;
+}
+
+.onboarding__step-header p {
+	max-width: 46ch;
+	margin: 0 auto;
+	color: #646970;
+}
+
+/* ==========================================================================
+   Content steps
+   ========================================================================== */
+
+.onboarding__image {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 0 auto 20px;
+}
+
+.onboarding__items {
+	display: grid;
+	gap: 12px;
+	margin: 0;
+}
+
+.onboarding__item {
+	display: flex;
+	gap: 10px;
+	margin: 0;
+}
+
+.onboarding__item .dashicons {
+	flex: none;
+	color: var( --onboarding-accent );
+}
+
+.onboarding__item-text strong {
+	display: block;
+}
+
+.onboarding__item-text span {
+	color: #646970;
+}
+
+.onboarding__links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 8px;
+	margin-top: 20px;
+}
+
+/* ==========================================================================
+   Actions
+   ========================================================================== */
+
+.onboarding__actions {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin-top: 28px;
+	padding-top: 20px;
+	border-top: 1px solid #dcdcde;
+}
+
+.onboarding__actions-end {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin-left: auto;
+}
+
+.onboarding__exit {
+	margin-top: 20px;
+	text-align: center;
+}
+
+/* ==========================================================================
+   Celebration
+   ========================================================================== */
+
+.onboarding__confetti {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	pointer-events: none;
+}
+
+/* ==========================================================================
+   Narrow screens
+
+   The step titles go first: the markers alone still say how many steps there
+   are and which one this is, and the titles are what does not fit.
+   ========================================================================== */
+
+@media screen and ( max-width: 600px ) {
+
+	.onboarding {
+		padding: 20px 12px 40px;
+	}
+
+	.onboarding__card {
+		padding: 20px;
+	}
+
+	.onboarding__step-title {
+		display: none;
+	}
+}
