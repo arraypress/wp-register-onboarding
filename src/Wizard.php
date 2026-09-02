@@ -54,6 +54,17 @@ final class Wizard {
 	private array $errors = [];
 
 	/**
+	 * What the field set refused on the last sanitizing pass.
+	 *
+	 * The kit checks `required` and `validate` for itself now, and a step
+	 * that ran its own callables and never asked would advance past a
+	 * refusal as though nothing had happened.
+	 *
+	 * @var array<string, string>
+	 */
+	private array $refused = [];
+
+	/**
 	 * The submission being re-rendered, when one failed to validate.
 	 *
 	 * @var array<string, mixed>|null
@@ -556,7 +567,10 @@ final class Wizard {
 		}
 
 		// Still slashed: the field set unslashes once, at its own boundary.
-		return $set->save( $this->raw_input() );
+		$values        = $set->save( $this->raw_input() );
+		$this->refused = $set->errors();
+
+		return $values;
 	}
 
 	/**
@@ -568,7 +582,9 @@ final class Wizard {
 	 * @return array<string, string> Messages keyed by field, `_step` for the step's own.
 	 */
 	private function validate( array $step, array $values ): array {
-		$errors = [];
+		// The kit's refusals first; a step's own callable may say more
+		// about the same field, and the last word is its own.
+		$errors = $this->refused;
 
 		foreach ( (array) $step['fields'] as $key => $config ) {
 			$check = $config['validate'] ?? null;

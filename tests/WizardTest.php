@@ -762,4 +762,40 @@ final class WizardTest extends TestCase {
 
 		$this->assertTrue( true );
 	}
+
+	/**
+	 * What the kit refuses stops the step, like the wizard's own checks do.
+	 *
+	 * The kit checks `required` and `validate` for itself now. A wizard that
+	 * ran only its own callables advanced past an empty required field and
+	 * stored nothing for it, with no message anywhere.
+	 */
+	public function test_the_kits_refusal_stops_the_step(): void {
+		$wizard = $this->wizard(
+			[
+				'steps' => [
+					'store' => [
+						'title'  => 'Your store',
+						'fields' => [
+							'store_name' => [
+								'type'     => 'text',
+								'label'    => 'Store name',
+								'required' => true,
+							],
+						],
+					],
+					'done'  => [
+						'type'  => 'content',
+						'title' => 'All done',
+					],
+				],
+			]
+		);
+
+		$this->assertNull( $this->submit( $wizard, 'store', [ 'store_name' => '' ] ) );
+		$this->assertArrayHasKey( 'store_name', $wizard->errors() );
+		$this->assertStringContainsString( 'required', $wizard->errors()['store_name'] );
+
+		$this->assertNotNull( $this->submit( $wizard, 'store', [ 'store_name' => 'Freshly Squeezed' ] ) );
+	}
 }
